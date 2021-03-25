@@ -6,6 +6,7 @@
 void *buscarUnoPrimeraMitad (void *);
 void *buscarUnoSegundaMitad (void *);
 
+//  CREAMOS UNA ESTRUCTURA VECTOR CON TODA LOS ATRIBUTOS NECESARIOS PARA OPERAR CON ELLA
 typedef struct {
   int encontrado;
   int tamano;
