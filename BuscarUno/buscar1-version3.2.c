@@ -3,40 +3,46 @@
 #include <unistd.h>
 #include <pthread.h> /* POSIX -> gcc -pthread */
 
-void *buscarUno (void *);
+void *buscarPresa (void *);
 
-//  CREACION DE LAS ESTRUCTURAS NECESARIAS DE FORMA ANIDADA
-typedef struct {
-  int encontrado;
-  int tamano;
-  int randomPosUno;
-  int * pointerC;
-} Vector;
+//  CREAMOS UNA ESTRUCTURA VECTOR CON TODA LOS ATRIBUTOS NECESARIOS PARA OPERAR CON ELLA
+typedef struct{
+    int tamano;
+    int randomPosUno;
+    int *arreglo;
+}Vector;
 
-typedef struct {
+typedef struct{
     int inicio;
     int fin;
-}Posicion;
+}Rango;
 
-typedef struct {
-    Vector vector;
-    Posicion posicion;
-}Hilo;
+typedef struct{
+    Vector *vector;
+    Rango rango;
+    int id;
+}ZonaBusqueda;
 
 int main(){
 
-//  CREACION DEL VECTOR, SE INICIALIZA ENCONTRADO EN 0 (FALSE), SE INGRESA POR PANTALLA EL TAMANO DEL ARREGLO Y SE RESERVA
-//  EN MEMORIA DICHO ESPACIO INICIALIZADOS EN 0 CON CALLOC
+//  CREACION DEL OBJETO VECTOR E INGRESO POR PANTALLA DEL TAMANO DEL ARREGLO
     Vector vector;
-    vector.encontrado = 0;
-    printf("Ingrese tamano del arreglo: ");
-    scanf("%d", &vector.tamano);
-    vector.pointerC = (int*)calloc(vector.tamano, sizeof(int));
+    vector.tamano = 0;
 
-//  SE GENERA UNA POSICION RANDOM PARA INSERTAR EL 1 EN ARREGLO DE CEROS
+    while (vector.tamano < 1 || vector.tamano > 50000) {
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 50000): ");
+        scanf("%d", &vector.tamano);
+    }
+    
+
+//  SE RESERVA TAMANO ESPACIOS EN MEMRORIA PARA 'ARREGLO' Y SE LA INICIALIZA EN 0
+    vector.arreglo = (int*)calloc(vector.tamano, sizeof(int));
+
+//  GENERAMOS UNA POSICION RANDOM DONDE INGRESAMOS EL 1
     srand(time(NULL));
     vector.randomPosUno = rand() % (vector.tamano);
-    vector.pointerC[vector.randomPosUno] = 1;
+    vector.arreglo[vector.randomPosUno] = 1;
+    printf("La funcion random asigno la presa en la posicion %d\n", vector.randomPosUno);
 
 //  SE INGRESA POR PANTALLA LA CANTIDAD DE HILOS, DEBE SER UN NUMERO ENTRE 2 Y 9 SINO SE PIDE NUEVAMENTE
     int cantHilos = 0;
@@ -45,46 +51,45 @@ int main(){
         scanf("%d", &cantHilos);
     }
     
-//  SE CREA UN ARRAY DE HILOS CON LA CANTIDAD ANTES INGRESADA Y SE GENERA EL RANGO PARA CADA HILO DONDE VA A BUSCAR
-    Hilo hilos[cantHilos];
-    Posicion rango;
+//  CREAMOS DOS ARRAY DE TIPO ZONABUSQUEDA Y PTHREAD(HILOS) CON CAPACIDAD = cantHilos
+    ZonaBusqueda zonaBusqueda[cantHilos];
+    pthread_t hilos[cantHilos];
+
+//  CREAMOS cantHilos INSTANCIAS DEL TIPO ZONABUSQUEDA, ASIGNAMOS EL MISMO VECTOR DE BUSQUEDA PARA TODAS.
+//  DEFINIMOS EL RANGO DE CADA UNA Y CREAMOS LOS HILOS
     for( int i = 0; i < cantHilos; i++ ) {
-        hilos[i].vector = vector;
-        rango.inicio = (vector.tamano * i) / cantHilos;
-        rango.fin = (vector.tamano * (i+1)) / cantHilos;
-        hilos[i].posicion.inicio =  rango.inicio;
-        hilos[i].posicion.fin = rango.fin;
+        zonaBusqueda[i].vector = &vector;
+        zonaBusqueda[i].rango.inicio = (vector.tamano * i) / cantHilos;
+        zonaBusqueda[i].rango.fin = (vector.tamano * (i+1)) / cantHilos;
+        zonaBusqueda[i].id = i+1;
+        pthread_create(&hilos[i], NULL, buscarPresa, &zonaBusqueda[i]);
         printf("\n hilo %d:\n", i+1);
-        printf("\tinicio: %d, ", hilos[i].posicion.inicio);
-        printf("fin: %d", hilos[i].posicion.fin);
+        printf("\tinicio: %d, ", zonaBusqueda[i].rango.inicio);
+        printf("fin: %d", zonaBusqueda[i].rango.fin);
     }
 
-//  CREAMOS N HILOS Y SE LE ASIGNA A CADA UNO LA TAREA DE BUSCAR EN UN RANGO ESPECIFICO DEL ARREGLO
-    pthread_t hiloss[cantHilos];
-    for( int i = 0; i < cantHilos; i++ )
-        pthread_create(&hiloss[i], NULL, buscarUno, &hilos[i]);
-    
-    sleep(1);
-    // while(cerosUnos.encontrado == 0) {
+//  ESPERAMOS LA FINALIZACION DE TODOS LOS HILOS PARA CONTINUAR CON EL MAIN
+    for (int i = 0; i < cantHilos; i++) {
+        pthread_join(hilos[i], NULL);
+    }
 
-    // }
-    
+//  LIBERAMOS EL ESPACIO DE MEMORIA QUE ESTA ASIGNADO POR CALLOC Y APUNTAMOS EL PUNTERO A LA NADA
+    free(vector.arreglo);
+    vector.arreglo = NULL;
+    printf("\n");
     return 0;
 }
 
-//  METODO ENCARGADO DE BUSCAR EL 1. RECIBE UN VOID* QUE SE CASTEA A HILO Y BUSCA EN EL ARREGLO ENTRE EL RANGO ESPECIFICADO EL 1.
-//  SI LO ENCUENTRA PONE EN 1 (TRUE) EL ATRIBUTO ENCONTRADO DE VECTOR
-void *buscarUno(void *tmp){
-    Hilo* h = (Hilo *)(tmp);
-    for (int i = h->posicion.inicio ; i < h->posicion.fin; i++)
-    {
-        if( h->vector.encontrado != 0 )
-            pthread_exit(NULL);
+//  METODO QUE BUSCA EN EL RANGO QUE SE LE ASIGNA A CADA HILO
 
-        if(h->vector.pointerC[i] == 1){
-            printf("\nSe encontro un 1 en la posicion: %d \n", i);
-            h->vector.encontrado = 1;
+void *buscarPresa(void *tmp){
+    ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
+    for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++)
+    {
+        if(zonaBusqueda->vector->arreglo[i] == 1){
+            printf("\nEl hilo %d encontro un 1 en la posicion: %d \n ", zonaBusqueda->id, i);
             pthread_exit(NULL);
         }
     }
+    pthread_exit(NULL);
 }

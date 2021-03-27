@@ -49,7 +49,7 @@ int main(){
     ZonaBusqueda zonaBusqueda[2];
     pthread_t hilos[2];
 
-//  CREAMOS 2 INSTANCIAS DEL TIPO ZONABUSQUEDA, ASIGNAMOS EL MISMO VECTOR PDE BUSQUEDA PARA AMBAS
+//  CREAMOS 2 INSTANCIAS DEL TIPO ZONABUSQUEDA, ASIGNAMOS EL MISMO VECTOR DE BUSQUEDA PARA AMBAS
 //  DEFINIMOS EL RANGO DE CADA UNA Y CREAMOS LOS HILOS
     for (int i = 0; i < 2; i++) {
         zonaBusqueda[i].vector = &vector;
@@ -71,8 +71,7 @@ int main(){
     return 0;
 }
 
-//  METODO QUE BUSCA EN LA PRIMERA MITAD, SI ENCUENTRA EL 1 SETEA ENCONTRADO EN 1 (TRUE)
-//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL 1
+//  METODO QUE BUSCA EN EL RANGO QUE SE LE ASIGNA A CADA HILO
 void *buscarPresa(void *tmp){
     ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
     for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++)

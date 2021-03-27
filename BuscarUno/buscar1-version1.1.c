@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <time.h> // se agrega para el uso de time(NULL) para el srand.
 #include <pthread.h> /* POSIX -> gcc -pthread */
 
 void *buscarPresa (void *);
