@@ -70,9 +70,10 @@ int main(){
         pthread_join(hilos[i], NULL);
     }
 
-    printf("El hilo %d encontro el mayor %d en la posicion %d \n", vector.idHiloDelMayor,
-                                                                            vector.mayor, 
-                                                                            vector.posMayor);
+//  DEVOLVEMOS POR PANTALLA EL HILO QUE ENCONTRO EL MAYOR, EL MAYOR Y SU POSICION EN EL ARREGLO
+    printf("El hilo %d encontro el mayor %d en la posicion %d \n",  vector.idHiloDelMayor,
+                                                                    vector.mayor, 
+                                                                    vector.posMayor);
 
 //  LIBERAMOS EL ESPACIO DE MEMORIA QUE ESTA ASIGNADO POR CALLOC Y APUNTAMOS EL PUNTERO A LA NADA
     free(vector.arreglo);
@@ -80,7 +81,7 @@ int main(){
     return 0;
 }
 
-//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL 1
+//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA PARALELA DEL MAYOR
 void *buscarMayor(void *tmp){
     ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
     for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++)

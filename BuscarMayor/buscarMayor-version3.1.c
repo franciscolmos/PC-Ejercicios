@@ -3,62 +3,104 @@
 #include <unistd.h>
 #include <pthread.h> /* POSIX -> gcc -pthread */
 
-void *buscarMayor(void *);
+#define P 1000000 // LIMITE MAXIMO DE VALORES ASIGNADOS AL ARREGLO
 
-typedef struct {
-  int mayor;
-  int posMayor;
-  int nroHilo;
-  int delta; // porcion de vector a buscar
-  int * pointerC;
-} Vector;
+void *buscarMayor (void *);
+
+//  CREAMOS UNA ESTRUCTURA VECTOR CON TODA LOS ATRIBUTOS NECESARIOS PARA OPERAR CON ELLA
+typedef struct{
+    int tamano;
+    int mayor;
+    int posMayor;
+    int idHiloDelMayor; // ESTE ID LO UTILIZAMOS PARA PODER ACCEDERLO DESDE EL MAIN YA QUE ES COMPARTIDO PARA LOS HILOS Y 
+                        // REPRESENTA EL ID DEL HILO QUE ENCONTRO EL MAYOR UNA VEZ QUE TERMINEN TODOS CON SU BUSQUEDA.
+    int *arreglo;
+}Vector;
+
+typedef struct{
+    int inicio;
+    int fin;
+}Rango;
+
+typedef struct{
+    Vector *vector;
+    Rango rango;
+    int id;
+}ZonaBusqueda;
 
 int main(){
-    Vector vectorMayor;
-    vectorMayor.mayor = 0;
-    vectorMayor.posMayor = -1;
-    vectorMayor.nroHilo = -1;
 
+//  CREACION DEL OBJETO VECTOR E INGRESO POR PANTALLA DEL TAMANO DEL ARREGLO
+//  INICIALIZAMOS LOS ATRIBUTOS MAYOR, POSMAYOR Y IDHILODELMAYOR EN -1 PARA VERIFICAR QUE SE ENCUENTRE CORRECTAMENTE
+    Vector vector;
+    vector.tamano = 0;
+    vector.mayor = -1;
+    vector.posMayor = -1;
+    vector.idHiloDelMayor = -1;
+
+    while (vector.tamano < 1 || vector.tamano > 50000)
+    {
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 50000): ");
+        scanf("%d", &vector.tamano);
+    }
+    
+//  SE RESERVA TAMANO ESPACIOS EN MEMRORIA PARA 'ARREGLO' Y SE LA INICIALIZA EN 0
+    vector.arreglo = (int*)calloc(vector.tamano, sizeof(int));
+
+//  AGREGAMOS ALEATORIAMENTE VALORES AL ARREGLO, ENTRE 0 Y P-1.
     srand(time(NULL));
-
-    // INICIALIZAMOS EL VECTOR DE NUMEROS PARA BUSCAR EL MAYOR
-
-    vectorMayor.pointerC = (int*)calloc(20000, sizeof(int));
-    for( int i = 0; i < 20000; i++ ) {
-        vectorMayor.pointerC[i] = rand() % 100000;
+    for( int i = 0; i < vector.tamano; i++ ) {
+        vector.arreglo[i] = rand() % P;
     }
 
+//  SE INGRESA POR PANTALLA LA CANTIDAD DE HILOS, DEBE SER UN NUMERO ENTRE 2 Y 9 SINO SE PIDE NUEVAMENTE
     int cantHilos = 0;
-    printf("Ingrese la cantidad de hilos que desee crear: ");
-    scanf("%d", &cantHilos);
-
-    vectorMayor.delta = 20000 / cantHilos;
-
-    pthread_t hilos[cantHilos];
-    for( int i = 0; i < cantHilos; i++ ){
-        printf("hilo %d", i);
-        pthread_create(&hilos[i], NULL, buscarMayor, &vectorMayor);
+    while(cantHilos < 2 || cantHilos > 9){
+        printf("Ingrese la cantidad de hilos que desee crear (debe ser entre 2 y 9) : ");
+        scanf("%d", &cantHilos);
     }
-    sleep(1);
-    // while(cerosUnos.encontrado == 0) {
 
-    // }
+//  CREAMOS cantHilos ZONABUSQUEDA Y LE ASIGNAMOS EL VECTOR Y EL RANGO SOBRE EL QUE DEBE BUSCAR
+//  CREAMOS canthilos HILOS Y LE ASIGNOS ZONABUSQUEDA A CADA UNO
+    ZonaBusqueda zonaBusqueda[cantHilos];
+    pthread_t hilos[cantHilos];
+    for (int i = 0; i < cantHilos; i++) {
+        zonaBusqueda[i].vector = &vector;
+        zonaBusqueda[i].rango.inicio = (vector.tamano * i) / cantHilos;
+        zonaBusqueda[i].rango.fin = (vector.tamano * (i+1)) / cantHilos;
+        zonaBusqueda[i].id = i+1;
+        pthread_create(&hilos[i], NULL, buscarMayor, &zonaBusqueda[i]);
+        printf("\n hilo %d:\n", i+1);
+        printf("\tinicio: %d, ", zonaBusqueda[i].rango.inicio);
+        printf("fin: %d", zonaBusqueda[i].rango.fin);
+    }
 
+//  ESPERAMOS LA FINALIZACION DE AMBOS HILOS PARA CONTINUAR CON EL MAIN
+    for (int i = 0; i < 2; i++) {
+        pthread_join(hilos[i], NULL);
+    }
+
+//  DEVOLVEMOS POR PANTALLA EL HILO QUE ENCONTRO EL MAYOR, EL MAYOR Y SU POSICION EN EL ARREGLO
+    printf("\nEl hilo %d encontro el mayor %d en la posicion %d \n",vector.idHiloDelMayor,
+                                                                    vector.mayor, 
+                                                                    vector.posMayor);
+
+//  LIBERAMOS EL ESPACIO DE MEMORIA QUE ESTA ASIGNADO POR CALLOC Y APUNTAMOS EL PUNTERO A LA NADA
+    free(vector.arreglo);
+    vector.arreglo = NULL;
     return 0;
 }
 
+//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA PARALELA DEL MAYOR
 void *buscarMayor(void *tmp){
-    Vector* p = (Vector *)(tmp);
-    p->nroHilo++;
-    printf("----NUMERO DE HILO: %d", p->nroHilo);
-    int secuencia = p->nroHilo;
-    for (int i = (secuencia * p->delta) ; i < ((secuencia + 1) * p->delta); i++)
+    ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
+    for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++)
     {
-        if(p->pointerC[i] > p->mayor){
-            p->mayor = p->pointerC[i];
-            p->posMayor = i;
+        if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
+            zonaBusqueda->vector->mayor = zonaBusqueda->vector->arreglo[i];
+            zonaBusqueda->vector->posMayor = i;
+            zonaBusqueda->vector->idHiloDelMayor = zonaBusqueda->id; // SE ACTUALIZA EN EL VECTOR EL HILO QUE ENCONTRO EL MAYOR
         }
     }
-    printf("\ninicio %d, secuencia %d, nroHilo %d\n", (secuencia * p->delta), ((secuencia+1) * p->delta), (p->nroHilo * p->delta));
     pthread_exit(NULL);
 }

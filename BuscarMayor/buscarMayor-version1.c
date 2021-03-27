@@ -69,7 +69,7 @@ int main(){
     return 0;
 }
 
-//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL 1
+//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL MAYOR
 void *buscarMayor(void *tmp){
     ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
     for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++)
