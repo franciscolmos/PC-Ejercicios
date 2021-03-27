@@ -34,7 +34,6 @@ int main(){
         scanf("%d", &vector.tamano);
     }
     
-
 //  SE RESERVA TAMANO ESPACIOS EN MEMRORIA PARA 'ARREGLO' Y SE LA INICIALIZA EN 0
     vector.arreglo = (int*)calloc(vector.tamano, sizeof(int));
 
