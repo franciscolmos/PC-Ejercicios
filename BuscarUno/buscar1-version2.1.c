@@ -3,73 +3,84 @@
 #include <unistd.h>
 #include <pthread.h> /* POSIX -> gcc -pthread */
 
-void *buscarUnoPrimeraMitad (void *);
-void *buscarUnoSegundaMitad (void *);
+void *buscarPresa (void *);
 
 //  CREAMOS UNA ESTRUCTURA VECTOR CON TODA LOS ATRIBUTOS NECESARIOS PARA OPERAR CON ELLA
-typedef struct {
-  int encontrado;
-  int tamano;
-  int randomPosUno;
-  int mitad;
-  int * pointerC;
-} Vector;
+typedef struct{
+    int tamano;
+    int randomPosUno;
+    int *arreglo;
+}Vector;
+
+typedef struct{
+    int inicio;
+    int fin;
+}Rango;
+
+typedef struct{
+    Vector *vector;
+    Rango rango;
+    int id;
+}ZonaBusqueda;
+
 
 int main(){
 
-//  CREACION DEL OBJETO VECTOR E INGRESO POR PANTALLA DEL TAMANO DEL ARREGLO, SE INICIALIZA EN 0 ENCONTRADO
+//  CREACION DEL OBJETO VECTOR E INGRESO POR PANTALLA DEL TAMANO DEL ARREGLO
     Vector vector;
-    vector.encontrado = 0;
-    printf("Ingrese tamano del arreglo: ");
-    scanf("%d", &vector.tamano);
+    vector.tamano = 0;
 
-//  SE RESERVA TAMANO POSICIONES EN MEMORIA INICIALIZADAS EN 0 CON CALLOC Y SE SETEA LA MITAD DEL ARREGLO
-    vector.pointerC = (int*)calloc(vector.tamano, sizeof(int));
-    vector.mitad = vector.tamano / 2;
+    while (vector.tamano < 1 || vector.tamano > 50000) {
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 50000): ");
+        scanf("%d", &vector.tamano);
+    }
+    
 
-//  SE GENERA UNA POSICION RANDOM PARA EL UNO
+//  SE RESERVA TAMANO ESPACIOS EN MEMRORIA PARA 'ARREGLO' Y SE LA INICIALIZA EN 0
+    vector.arreglo = (int*)calloc(vector.tamano, sizeof(int));
+
+//  GENERAMOS UNA POSICION RANDOM DONDE INGRESAMOS EL 1
     srand(time(NULL));
     vector.randomPosUno = rand() % (vector.tamano);
-    vector.pointerC[vector.randomPosUno] = 1;
+    vector.arreglo[vector.randomPosUno] = 1;
+    printf("La funcion random asigno la presa en la posicion %d\n", vector.randomPosUno);
 
-//  creamos 2 hilos
+//  CREAMOS DOS ARRAY DE TIPO ZONABUSQUEDA Y PTHREAD(HILOS) CON CAPACIDAD = 2
+    ZonaBusqueda zonaBusqueda[2];
     pthread_t hilos[2];
 
-//  CADA HILO SE LE ASIGNA LA TAREA DE BUSCAR EN SU MITAD CORRESPONDIENTE Y SE ESPERA A QUE CADA UNO TERMINE
-    pthread_create(&hilos[0], NULL, buscarUnoPrimeraMitad, &vector);
-    pthread_create(&hilos[1], NULL, buscarUnoSegundaMitad, &vector);
-    pthread_join(hilos[0], NULL);
-    pthread_join(hilos[1], NULL);
+//  CREAMOS 2 INSTANCIAS DEL TIPO ZONABUSQUEDA, ASIGNAMOS EL MISMO VECTOR PDE BUSQUEDA PARA AMBAS
+//  DEFINIMOS EL RANGO DE CADA UNA Y CREAMOS LOS HILOS
+    for (int i = 0; i < 2; i++) {
+        zonaBusqueda[i].vector = &vector;
+        zonaBusqueda[i].rango.inicio = (vector.tamano * i) / 2;
+        zonaBusqueda[i].rango.fin = (vector.tamano * (i+1)) / 2;
+        zonaBusqueda[i].id = i+1;
+        pthread_create(&hilos[i], NULL, buscarPresa, &zonaBusqueda[i]);
+    }
+
+//  ESPERAMOS LA FINALIZACION DE AMBOS HILOS PARA CONTINUAR CON EL MAIN
+    for (int i = 0; i < 2; i++) {
+        pthread_join(hilos[i], NULL);
+    }
+
+//  LIBERAMOS EL ESPACIO DE MEMORIA QUE ESTA ASIGNADO POR CALLOC Y APUNTAMOS EL PUNTERO A LA NADA
+    free(vector.arreglo);
+    vector.arreglo = NULL;
 
     return 0;
 }
 
 //  METODO QUE BUSCA EN LA PRIMERA MITAD, SI ENCUENTRA EL 1 SETEA ENCONTRADO EN 1 (TRUE)
-void *buscarUnoPrimeraMitad(void *tmp){
-    Vector* vector = (Vector *)(tmp);    
-    for (int i = 0; i < vector->mitad; i++)
+//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL 1
+void *buscarPresa(void *tmp){
+    ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
+    for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++)
     {
-        if( vector->encontrado != 0 )
-            pthread_exit(NULL);
-        if(vector->pointerC[i] == 1){
-            printf("Se encontro un 1 en la posicion: %d \n ", i);
-            vector->encontrado = 1;
+        if(zonaBusqueda->vector->arreglo[i] == 1){
+            printf("El hilo %d encontro un 1 en la posicion: %d \n ", zonaBusqueda->id, i);
             pthread_exit(NULL);
         }
     }
-}
-
-//  METODO QUE BUSCA EN LA SEGUNDA MITAD, SI ENCUENTRA EL 1 SETEA ENCONTRADO EN 1 (TRUE)
-void *buscarUnoSegundaMitad(void *tmp){
-    Vector* vector = (Vector *)(tmp);
-    for (int i = vector->mitad; i < 20000; i++)
-    {
-        if( vector->encontrado != 0 )
-            pthread_exit(NULL);
-        if(vector->pointerC[i] == 1){
-            printf("Se encontro un 1 en la posicion: %d \n ", i);
-            vector->encontrado = 1;
-            pthread_exit(NULL); 
-        }
-    }
+    pthread_exit(NULL);
 }
