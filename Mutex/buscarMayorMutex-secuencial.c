@@ -1,0 +1,97 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h> /* POSIX -> gcc -pthread */
+
+#define P 1000000 // LIMITE MAXIMO DE VALORES ASIGNADOS AL ARREGLO
+
+void *buscarMayor (void *);
+
+//  CREAMOS UNA ESTRUCTURA VECTOR CON TODA LOS ATRIBUTOS NECESARIOS PARA OPERAR CON ELLA
+typedef struct{
+    int tamano;
+    int mayor;
+    int posMayor;
+    int *arreglo;
+    pthread_mutex_t mutex;
+}Vector;
+
+typedef struct{
+    int inicio;
+    int fin;
+}Rango;
+
+typedef struct{
+    Vector *vector;
+    Rango rango;
+}ZonaBusqueda;
+
+int main(){
+
+//  CREACION DEL OBJETO VECTOR E INGRESO POR PANTALLA DEL TAMANO DEL ARREGLO
+//  INICIALIZAMOS LOS ATRIBUTOS MAYOR Y POSMAYOR EN -1 PARA VERIFICAR QUE SE ENCUENTRE CORRECTAMENTE
+    Vector vector;
+    vector.tamano = 0;
+    vector.mayor = -1;
+    vector.posMayor = -1;
+
+    while (vector.tamano < 1 || vector.tamano > 50000)
+    {
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 50000): ");
+        scanf("%d", &vector.tamano);
+    }
+    
+//  SE RESERVA TAMANO ESPACIOS EN MEMRORIA PARA 'ARREGLO' Y SE LA INICIALIZA EN 0
+    vector.arreglo = (int*)calloc(vector.tamano, sizeof(int));
+
+//  AGREGAMOS ALEATORIAMENTE VALORES AL ARREGLO, ENTRE 0 Y P-1.
+    srand(time(NULL));
+    for( int i = 0; i < vector.tamano; i++ ) {
+        vector.arreglo[i] = rand() % P;
+    }
+
+//  CREAMOS ZONA BUSQUEDA PARA PASAR EL VECTOR Y EL RANGO SOBRE EL QUE DEBE BUSCAR EL HILO
+    ZonaBusqueda zonaBusqueda;
+    zonaBusqueda.vector = &vector;
+    zonaBusqueda.rango.inicio = 0;
+    zonaBusqueda.rango.fin = vector.tamano;
+
+//  INICIAMOS EL MUTEX DE ZONABUSQUEDA DESBLOQUEADO
+    pthread_mutex_init(&zonaBusqueda.vector->mutex, NULL);
+
+/*
+    CREAMOS 1 HILO Y ESPERAMOS A QUE TERMINE CON JOIN, EL HILO EJECTUTA LA FUNCION BUSCARMAYOR
+    Y SE LE PASA POR PARMAETRO EL VECTOR CON TODA LA INFORMACION PARA PODER ENCONTRARLO
+*/
+    pthread_t hilo;
+    pthread_create(&hilo, NULL, buscarMayor, &zonaBusqueda);
+    pthread_join(hilo, NULL);
+
+//  LIBERAMOS EL ESPACIO DE MEMORIA QUE ESTA ASIGNADO POR CALLOC Y APUNTAMOS EL PUNTERO A LA NADA
+    free(vector.arreglo);
+    vector.arreglo = NULL;
+    return 0;
+}
+
+//  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL MAYOR
+void *buscarMayor(void *tmp){
+    ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
+//  protocolo de ingreso de la zona critica
+    pthread_mutex_lock(&zonaBusqueda->vector->mutex);
+    printf("Inicio bloqueo\n");
+    for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++){
+        if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
+            zonaBusqueda->vector->mayor = zonaBusqueda->vector->arreglo[i];
+            zonaBusqueda->vector->posMayor = i;
+        }
+    }
+//  protocolo de salida de la zona critica
+    sleep(1); // para simular que sucede algo durante el bloqueo
+    pthread_mutex_unlock(&zonaBusqueda->vector->mutex);
+    printf("Fin bloqueo\n");
+
+    printf("El mayor es %d y la posicion es %d \n", zonaBusqueda->vector->mayor, 
+                                                    zonaBusqueda->vector->posMayor);
+
+    pthread_exit(NULL);
+}
