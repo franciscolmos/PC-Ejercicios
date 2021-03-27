@@ -38,9 +38,9 @@ int main(){
     vector.posMayor = -1;
     vector.idHiloDelMayor = -1;
 
-    while (vector.tamano < 1 || vector.tamano > 50000)
+    while (vector.tamano < 9 || vector.tamano > 40000)
     {
-        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 50000): ");
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 9 y 40000): ");
         scanf("%d", &vector.tamano);
     }
     
@@ -76,7 +76,7 @@ int main(){
     }
 
 //  ESPERAMOS LA FINALIZACION DE AMBOS HILOS PARA CONTINUAR CON EL MAIN
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < cantHilos; i++) {
         pthread_join(hilos[i], NULL);
     }
 

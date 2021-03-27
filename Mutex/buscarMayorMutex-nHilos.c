@@ -39,9 +39,13 @@ int main(){
     vector.posMayor = -1;
     vector.idHiloDelMayor = -1;
 
-    while (vector.tamano < 1 || vector.tamano > 40000)
+//  CREACION E INICIALIZACION DEL MUTEX BLOQUEANTE    
+    pthread_mutex_init(&vector.mutex, NULL);
+
+//  INGRESO DEL TAMAÑO DEL ARREGLO POR PARTE DEL USUARIO
+    while (vector.tamano < 9 || vector.tamano > 40000)
     {
-        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 40000): ");
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 9 y 40000): ");
         scanf("%d", &vector.tamano);
     }
     
@@ -74,7 +78,7 @@ int main(){
     }
 
 //  ESPERAMOS LA FINALIZACION DE AMBOS HILOS PARA CONTINUAR CON EL MAIN
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < cantHilos; i++) {
         pthread_join(hilos[i], NULL);
     }
 
@@ -89,30 +93,29 @@ int main(){
     return 0;
 }
 
-
 //  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL MAYOR
 void *buscarMayor(void *tmp){
     ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
     int mayorLocal = -1;
     int posMayorLocal = -1;
     for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++){
-        if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
+        if(zonaBusqueda->vector->arreglo[i] > mayorLocal){
             mayorLocal = zonaBusqueda->vector->arreglo[i];
             posMayorLocal = i;
         }
     }
-    // protocolo de ingreso a la zona critica
+    // PROTOCOLO DE INGRESO A LA ZONA CRITICA
     pthread_mutex_lock(&zonaBusqueda->vector->mutex);
     printf("\nInicio bloqueo hilo %d\n", zonaBusqueda->id);
-    if(mayorLocal > zonaBusqueda->vector->mayor){
+    if(mayorLocal > zonaBusqueda->vector->mayor) {
         printf("\n\tHilo %d posible mayor %d\n", zonaBusqueda->id, mayorLocal);
         zonaBusqueda->vector->mayor = mayorLocal;
         zonaBusqueda->vector->posMayor = posMayorLocal;
         zonaBusqueda->vector->idHiloDelMayor = zonaBusqueda->id;
     }
-    // protocolo de salida de la zona critica
-    pthread_mutex_unlock(&zonaBusqueda->vector->mutex);
+    // PROTOCOLO DE SALIDA DE LA ZONA CRITICA
     printf("\nFin bloqueo hilo %d\n", zonaBusqueda->id);
+    pthread_mutex_unlock(&zonaBusqueda->vector->mutex);
 
     pthread_exit(NULL);
 }

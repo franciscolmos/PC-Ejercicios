@@ -29,8 +29,8 @@ int main(){
     Vector vector;
     vector.tamano = 0;
 
-    while (vector.tamano < 1 || vector.tamano > 50000) {
-        printf("Ingrese tamano del arreglo (debe ser un valor entre 1 y 50000): ");
+    while (vector.tamano < 9 || vector.tamano > 40000) {
+        printf("Ingrese tamano del arreglo (debe ser un valor entre 9 y 40000): ");
         scanf("%d", &vector.tamano);
     }
     
