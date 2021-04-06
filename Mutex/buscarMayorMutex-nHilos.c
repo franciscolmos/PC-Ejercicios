@@ -96,26 +96,20 @@ int main(){
 //  FUNCION QUE RECIBE *VOID Y LUEGO LO CASTEA A UNA ZONABUSQUEDA PARA PODER HACER LA BUSQUEDA SECUENCIAL DEL MAYOR
 void *buscarMayor(void *tmp){
     ZonaBusqueda* zonaBusqueda = (ZonaBusqueda *)(tmp);
-    int mayorLocal = -1;
-    int posMayorLocal = -1;
     for (int i = zonaBusqueda->rango.inicio; i < zonaBusqueda->rango.fin; i++){
-        if(zonaBusqueda->vector->arreglo[i] > mayorLocal){
-            mayorLocal = zonaBusqueda->vector->arreglo[i];
-            posMayorLocal = i;
+        if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
+            pthread_mutex_lock(&zonaBusqueda->vector->mutex);
+            printf("\nInicio bloqueo hilo %d\n", zonaBusqueda->id);
+            if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
+                printf("\n\tHilo %d posible mayor %d\n", zonaBusqueda->id, zonaBusqueda->vector->arreglo[i]);
+                zonaBusqueda->vector->mayor = zonaBusqueda->vector->arreglo[i];
+                zonaBusqueda->vector->posMayor = i;
+                zonaBusqueda->vector->idHiloDelMayor = zonaBusqueda->id;
+            }
+             // PROTOCOLO DE SALIDA DE LA ZONA CRITICA
+            printf("\nFin bloqueo hilo %d\n", zonaBusqueda->id);
+            pthread_mutex_unlock(&zonaBusqueda->vector->mutex);
         }
     }
-    // PROTOCOLO DE INGRESO A LA ZONA CRITICA
-    pthread_mutex_lock(&zonaBusqueda->vector->mutex);
-    printf("\nInicio bloqueo hilo %d\n", zonaBusqueda->id);
-    if(mayorLocal > zonaBusqueda->vector->mayor) {
-        printf("\n\tHilo %d posible mayor %d\n", zonaBusqueda->id, mayorLocal);
-        zonaBusqueda->vector->mayor = mayorLocal;
-        zonaBusqueda->vector->posMayor = posMayorLocal;
-        zonaBusqueda->vector->idHiloDelMayor = zonaBusqueda->id;
-    }
-    // PROTOCOLO DE SALIDA DE LA ZONA CRITICA
-    printf("\nFin bloqueo hilo %d\n", zonaBusqueda->id);
-    pthread_mutex_unlock(&zonaBusqueda->vector->mutex);
-
     pthread_exit(NULL);
 }
