@@ -32,12 +32,11 @@ typedef struct{
 int main(){
 
 //  CREACION DEL OBJETO VECTOR E INGRESO POR PANTALLA DEL TAMANO DEL ARREGLO
-//  INICIALIZAMOS LOS ATRIBUTOS MAYOR, POSMAYOR Y IDHILODELMAYOR EN -1 PARA VERIFICAR QUE SE ENCUENTRE CORRECTAMENTE
     Vector vector;
     vector.tamano = 0;
-    vector.mayor = -1;
-    vector.posMayor = -1;
-    vector.idHiloDelMayor = -1;
+    // vector.mayor = -1;
+    // vector.posMayor = -1;
+    // vector.idHiloDelMayor = -1;
 
 //  CREACION E INICIALIZACION DEL MUTEX BLOQUEANTE    
     pthread_mutex_init(&vector.mutex, NULL);
@@ -51,6 +50,11 @@ int main(){
     
 //  SE RESERVA TAMANO ESPACIOS EN MEMRORIA PARA 'ARREGLO' Y SE LA INICIALIZA EN 0
     vector.arreglo = (int*)calloc(vector.tamano, sizeof(int));
+
+//  INICIALIZAMOS LOS ATRIBUTOS MAYOR, POSMAYOR Y IDHILODELMAYOR EN -1 PARA VERIFICAR QUE SE ENCUENTRE CORRECTAMENTE
+    vector.mayor = vector.arreglo[0];
+    vector.posMayor = 0;
+    vector.idHiloDelMayor = 1;
 
 //  AGREGAMOS ALEATORIAMENTE VALORES AL ARREGLO, ENTRE 0 Y P-1.
     srand(time(NULL));
@@ -100,11 +104,15 @@ void *buscarMayor(void *tmp){
         if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
             pthread_mutex_lock(&zonaBusqueda->vector->mutex);
             printf("\nInicio bloqueo hilo %d\n", zonaBusqueda->id);
+            printf("\n\tPosible mayor %d\n", zonaBusqueda->vector->arreglo[i]);
             if(zonaBusqueda->vector->arreglo[i] > zonaBusqueda->vector->mayor){
-                printf("\n\tHilo %d posible mayor %d\n", zonaBusqueda->id, zonaBusqueda->vector->arreglo[i]);
+                printf("\n\t\tNuevo mayor %d\n", zonaBusqueda->vector->arreglo[i]);
                 zonaBusqueda->vector->mayor = zonaBusqueda->vector->arreglo[i];
                 zonaBusqueda->vector->posMayor = i;
                 zonaBusqueda->vector->idHiloDelMayor = zonaBusqueda->id;
+            }
+            else{
+                printf("\n\t\tNo es mayor a %d\n", zonaBusqueda->vector->mayor);
             }
              // PROTOCOLO DE SALIDA DE LA ZONA CRITICA
             printf("\nFin bloqueo hilo %d\n", zonaBusqueda->id);
