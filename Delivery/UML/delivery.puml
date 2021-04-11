@@ -1,0 +1,15 @@
+@startuml Delivery
+    state Ocupado {
+        [*] --> pedidoNoEntreago
+        pedidoNoEntreago --> pedidoNoEntreago : pedidoNoEntregado()
+        pedidoNoEntreago --> pedidoEntregado : pedidoEntregado()
+        pedidoEntregado --> pedidoEntregado : dineroNoEntregado()
+        pedidoEntregado  --> [*] : dineroEntregadoEncargado()
+
+    }
+    [*] --> EsperaDePedido
+    EsperaDePedido --> EsperaDePedido : deliveryOcupado()
+    EsperaDePedido --> Ocupado : pedidoListoParaEntregar()
+    Ocupado --> EsperaDePedido: listo()
+    Ocupado --> Ocupado : noListo()
+@enduml

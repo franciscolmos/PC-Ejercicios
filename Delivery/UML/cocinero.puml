@@ -1,0 +1,7 @@
+@startuml Cocinero
+    [*] --> EsperaDePedido
+    EsperaDePedido --> Ocupado : nuevoPedido()
+    EsperaDePedido --> EsperaDePedido : cocineroOcupado()
+    Ocupado --> Ocupado : cocinando()
+    Ocupado --> EsperaDePedido: entregarPedidoADelivery()
+@enduml
