@@ -1,0 +1,7 @@
+@startuml Telefono
+    [*] --> EsperaDePedido
+    EsperaDePedido --> EsperaDePedido : esperandoPedido()
+    EsperaDePedido --> Ocupado : nuevoPedido()
+    Ocupado --> Ocupado : encargadoBloqueado()
+    Ocupado --> EsperaDePedido : pedidoEntregadoCocinero()
+@enduml
