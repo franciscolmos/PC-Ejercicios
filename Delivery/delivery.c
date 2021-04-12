@@ -32,10 +32,6 @@ void atenderPedido(Encargado *);
 void cargarPedido(Encargado *);
 
 int main(){
-    //Se crean los mutex
-    //pthread_mutex_t * m1 = (pthread_mutex_t *) (calloc(1,sizeof(pthread_mutex_t)));
-    //pthread_mutex_t * m2 = (pthread_mutex_t *) (calloc(1,sizeof(pthread_mutex_t)));
-    
     pthread_mutex_t m1;
     pthread_mutex_t m2;
 
@@ -95,7 +91,7 @@ void * sonar(void * tmp){
     printf("-- INICIO FUNCION SONAR --\n");
     for (int i = 0; i < 10; i++)
     {
-        usleep(rand()% 501 + 500);
+        usleep(rand()% 500001 + 500000);
         pthread_mutex_lock(telefono->mutexTelefono);
         printf("\ttelefono sonando %d\n", i+1);
         pthread_mutex_unlock(telefono->mutexEncargado);
@@ -111,7 +107,7 @@ void * gestionPedidos(void * tmp){
     printf("-- INICIO FUNCION GESTION PEDIDOS --\n");
     while(*encargado->flagNoMasLlamadas != 0){
         atenderPedido(encargado);
-        usleep(rand()% 251 + 500);
+        usleep(rand()% 250001 + 500000);
         cargarPedido(encargado);
     }
     printf("-- FIN FUNCION GESTION PEDIDOS --\n");
