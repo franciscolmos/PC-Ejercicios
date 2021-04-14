@@ -1,9 +1,8 @@
 @startuml Encargado
     [*] --> EsperaDePedido
-    EsperaDePedido --> EsperaDePedido : esperandoPedido()
-    EsperaDePedido --> Ocupado : nuevoPedido()
-    Ocupado --> Ocupado : cargandoPedido()
-    Ocupado --> Listo: pedidoCargado()
-    Listo --> Listo : cocineroBloqueado()
-    Listo --> EsperaDePedido : pedidoTomadoPorCocinero()
+    EsperaDePedido --> TomandoPedido : nuevoPedido()
+    TomandoPedido --> CargandoPedido : pedidoCargado()
+    CargandoPedido -up-> Cobrando : cobrar()
+    Cobrando -up-> EsperaDePedido : enEsperaLlamada()
+    Cobrando --> [*] : ultimoPedido()
 @enduml

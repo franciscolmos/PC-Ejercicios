@@ -1,9 +1,6 @@
 @startuml Telefono
     [*] --> EsperaDePedido
-    EsperaDePedido --> EsperaDePedido : esperandoPedido()
-    EsperaDePedido --> Ocupado : nuevoPedido()
-    Ocupado --> Ocupado : sonando()
-    Ocupado --> Listo: telefonoAtendido()
-    Listo --> Listo : cargandoPedido()
-    Listo --> EsperaDePedido : pedidoCargado()
-@enduml
+    EsperaDePedido --> Llamando : nuevoPedido()
+    Llamando --> EnLlamada: telefonoAtendido()
+    EnLlamada --> EsperaDePedido : pedidoCargado()
+@endumlx
