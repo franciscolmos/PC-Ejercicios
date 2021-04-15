@@ -1,7 +1,7 @@
 @startuml Delivery
-    [*] --> EsperaDePedido
-    EsperaDePedido --> EntregandoPedido : nuevoPedido()
+    [*] --> EsperandoPedido
+    EsperandoPedido --> EntregandoPedido : entregarPedido()
     EntregandoPedido --> EntregandoDinero : pedidoEntregado()
-    EntregandoDinero --> EsperaDePedido : listo()
-    EntregandoDinero --> [*] : finalizado()
-@enduml
+    EntregandoDinero --> EsperandoPedido : dineroEntregado()
+    EntregandoDinero --> [*] : ultimoPedido()
+@endumld
