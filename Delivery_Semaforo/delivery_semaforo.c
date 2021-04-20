@@ -29,7 +29,6 @@ void borrarSemaforo(sem_t *, char *);
 //Funciones de telefono
 void * gestionTelefono( void *);
 void sonando(Sincronizacion *);
-//void telefonoAtendido(Sincronizacion *);
 
 //Funciones de encargado
 void * gestionEncargado(void *);
@@ -43,16 +42,16 @@ void nuevoPedido(Sincronizacion *);
 void pedidoCocinado(Sincronizacion *);
 
 //Funciones de delivery
-//void * gestionDelivery(void *);
-//void entregarPedido(Sincronizacion *);
-//void pedidoEntregado(Sincronizacion *);
+void * gestionDelivery(void *);
+void entregarPedido(Sincronizacion *);
+void pedidoEntregado(Sincronizacion *);
 
 int main(){
     // Creamos los mutex de forma dinamica
     sem_t * s1 = (sem_t *)(calloc(1, sizeof(sem_t)));
     sem_t * s2 = (sem_t *)(calloc(1, sizeof(sem_t)));
     sem_t * s3 = (sem_t *)(calloc(1, sizeof(sem_t)));
-    //sem_t * s4 = (sem_t *)(calloc(1, sizeof(sem_t)));
+    sem_t * s4 = (sem_t *)(calloc(1, sizeof(sem_t)));
 
     // Se crea el aviso para indicar que no se aceptan mas llamadas
     int * flag = (int *)(calloc(1, sizeof(int)));
@@ -60,14 +59,14 @@ int main(){
 
     // Se crean los actores del juego
     Sincronizacion * telefono = inicializarSincronizacion(s1, s2, flag);
-    Encargado * encargado = inicializarEncargado(telefono, s3);
+    Encargado * encargado = inicializarEncargado(telefono, s4);
     Sincronizacion * cocinero = inicializarSincronizacion(s3, s2, flag);
-    //Sincronizacion * delivery = inicializarSincronizacion(s4, s2, flag);
+    Sincronizacion * delivery = inicializarSincronizacion(s4, s3, flag);
 
     s1 = sem_open("/semTelefono", O_CREAT, O_RDWR, 0);
     s2 = sem_open("/semEncargado", O_CREAT, O_RDWR, 0);
     s3 = sem_open("/semCocinero", O_CREAT, O_RDWR, 0);
-    //s4 = sem_open("/semDelivery", O_CREAT, O_RDWR, 0);
+    s4 = sem_open("/semDelivery", O_CREAT, O_RDWR, 0);
 
     // Se instancian las variables hilos de cada objeto
     pthread_t hiloTelefono;
@@ -75,8 +74,8 @@ int main(){
     pthread_t hiloCocinero1;
     pthread_t hiloCocinero2;
     pthread_t hiloCocinero3;
-    //pthread_t hiloDelivery1;
-    //pthread_t hiloDelivery2;
+    pthread_t hiloDelivery1;
+    pthread_t hiloDelivery2;
 
 
     // Se crean los hilos de cada objeto
@@ -85,7 +84,8 @@ int main(){
     pthread_create(&hiloCocinero1, NULL, gestionCocinero, (void *)(cocinero));
     pthread_create(&hiloCocinero2, NULL, gestionCocinero, (void *)(cocinero));
     pthread_create(&hiloCocinero3, NULL, gestionCocinero, (void *)(cocinero));
-    //pthread_create(&hiloDelivery2, NULL, gestionDelivery, (void *)(delivery));
+    pthread_create(&hiloDelivery1, NULL, gestionDelivery, (void *)(delivery));
+    pthread_create(&hiloDelivery2, NULL, gestionDelivery, (void *)(delivery));
 
     // Se espera que terminen todos los hilos
     pthread_join(hiloTelefono, NULL);
@@ -93,24 +93,67 @@ int main(){
     pthread_join(hiloCocinero1, NULL);
     pthread_join(hiloCocinero2, NULL);
     pthread_join(hiloCocinero3, NULL);
-    /*
     pthread_join(hiloDelivery1, NULL);
     pthread_join(hiloDelivery2, NULL);
-    */
+    
 
     // Se libera la memoria de los objetos creados
     //liberarEncargado(encargado);
     free(telefono);
     free(encargado);
     free(cocinero);
-    //free(delivery);
+    free(delivery);
 
-    sem_close(s1);
-    sem_unlink("/semTelefono");
+    int error = 0;
+
+    error = sem_close(s1);
+    if(!error){
+        error = sem_unlink("/semTelefono");
+        if(error){
+            perror("sem_unlink()");
+        }
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s2);
+    if(!error){
+        error = sem_unlink("/semEmcargado");
+        if(error){
+            perror("sem_unlink()");
+        }
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s3);
+    if(!error){
+        error = sem_unlink("/semCocinero");
+        if(error){
+            perror("sem_unlink()");
+        }
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s4);
+    if(!error){
+        error = sem_unlink("/semDelivery");
+        if(error){
+            perror("sem_unlink()");
+        }
+    }else{
+        perror("sem_close()");
+    }
+    
+    /*
     sem_close(s2);
     sem_unlink("/semEmcargado");
     sem_close(s3);
-    sem_unlink("/semCocinero");/*
+    sem_unlink("/semCocinero");
+    sem_close(s4);
+    sem_unlink("/semDelivery");
+    
     borrarSemaforo(s1,);
     borrarSemaforo(s2, "/semEncargado");
     borrarSemaforo(s3, "/semCocinero");
@@ -126,9 +169,13 @@ void * gestionTelefono(void * tmp){
     printf("-- INICIO FUNCION GESTION TELEFONO --\n");
     for (int i = 0; i < 10; i++)
     {
+        int estado = 0;
+        sem_getvalue(telefono->semaforo1, &estado);
+        while(estado == 1){
+            sem_getvalue(telefono->semaforo1, &estado);
+        }
         usleep(rand()% 500001 + 500000);
         sonando(telefono);
-        //telefonoAtendido(telefono);
     }
     *telefono->flagNoMasLlamadas = 0;
     printf("-- FIN FUNCION GESTION TELEFONO --\n");
@@ -138,22 +185,7 @@ void * gestionTelefono(void * tmp){
 void sonando(Sincronizacion * telefono) {
     sem_post(telefono->semaforo1);
      printf("\ttelefono sonando\n");
-    /*
-    int semVal = 0;
-    sem_getvalue(telefono->semaforo1, &semVal);
-    if(semVal == 0){
-         sem_post(telefono->semaforo1);
-    //printf("\tvalor sem telefono: %d", semVal);
-        printf("\ttelefono sonando\n");
-    }
-    */
 }
-
-/*
-void telefonoAtendido(Sincronizacion * telefono) {
-    printf("\ttelefono atendido\n");
-}
-*/
 
 // Hilo Encargado
 void * gestionEncargado(void * tmp){
@@ -161,8 +193,7 @@ void * gestionEncargado(void * tmp){
     printf("-- INICIO FUNCION GESTION ENCARGADO --\n");
     while(*encargado->sincronizacion->flagNoMasLlamadas != 0){
         atenderPedido(encargado);
-        //cargarPedido(encargado);
-        //cobrar(encargado);
+        cobrar(encargado);
     }
     printf("-- FIN FUNCION GESTION ENCARGADO --\n");
     pthread_exit(NULL);
@@ -184,15 +215,17 @@ void cargarPedido(Encargado * encargado){
     printf("\t\tpedido cargado\n");
 }
 
-/*
+
 void cobrar(Encargado * encargado) {
+    int error = 0;
     srand(time(NULL));
-    sem_trywait(encargado->sincronizacion->semaforo2);
-    printf("\t\tdinero guardado en caja\n");
-    usleep(rand()% 150001 + 100000);
-    pthread_mutex_unlock(encargado->sincronizacion->semaforo1);
+    error = sem_trywait(encargado->semaforo3);
+    if(!error){
+        printf("\t\tdinero guardado en caja\n");
+        usleep(rand()% 150001 + 100000);
+    }
 }
-*/
+
 
 // Hilo Cocinero
 void * gestionCocinero(void * tmp) {
@@ -213,14 +246,8 @@ void nuevoPedido(Sincronizacion * cocinero) {
     usleep(rand()% 1000001 + 1000000);
 }
 void pedidoCocinado(Sincronizacion * cocinero) {
-    int cantCocineros = 0;
-    sem_getvalue(cocinero->semaforo1, &cantCocineros);
-    if(cantCocineros < 3){
-        sem_post(cocinero->semaforo1);
-        printf("\t\t\tpedido cocinado\n");
-    }else{
-        printf("\t\t\tcocineros ocupados\n");
-    }
+    sem_post(cocinero->semaforo1);
+    printf("\t\t\tpedido cocinado\n");
 }
 
 /*
