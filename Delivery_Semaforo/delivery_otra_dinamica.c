@@ -25,7 +25,7 @@ Encargado * inicializarEncargado(Sincronizacion *, sem_t *, sem_t *);
 //Funciones de liberacion de memoria
 //void liberarSincronizacion(Sincronizacion *);
 //void liberarEncargado(Encargado *);
-void borrarSemaforo(sem_t *, char *);
+void borrarSemaforo(sem_t *, sem_t *, sem_t *, sem_t *, sem_t *);
 
 //Funciones de telefono
 void * gestionTelefono( void *);
@@ -35,7 +35,6 @@ void sonando(Sincronizacion *);
 void * gestionEncargado(void *);
 void atenderPedido(Encargado *);
 void cargarPedido(Encargado *);
-// void cobrar(Encargado *);
 
 //Funciones de cocinero
 void * gestionCocinero(void *);
@@ -87,7 +86,7 @@ int main(){
     // pthread_create(&hiloDelivery1, NULL, gestionDelivery, (void *)(delivery));
     // pthread_create(&hiloDelivery2, NULL, gestionDelivery, (void *)(delivery));
 
-    sleep(25);
+    sleep(15);
     corte = 1;
 
     // Se espera que terminen todos los hilos
@@ -100,85 +99,12 @@ int main(){
     // pthread_join(hiloDelivery2, NULL);
 
     // Se libera la memoria de los objetos creados
-    //liberarEncargado(encargado);
     free(telefono);
     free(encargado);
     free(cocinero);
     // free(delivery);
 
-    // int error = 0;
-
-    int error = 0;
-    error = sem_close(s1);
-    if(!error){
-        error = sem_unlink("/semTelefono");
-        if(error){
-            perror("sem_unlink()");
-        }
-        else {
-            printf("Semaforo borrado!\n");
-        }
-    }else{
-        perror("sem_close()");
-    }
-
-    error = sem_close(s2);
-    if(!error){
-        error = sem_unlink("/semLlamada");
-        if(error){
-            perror("sem_unlink()");
-        }
-        else {
-            printf("Semaforo borrado!\n");
-        }        
-    }else{
-        perror("sem_close()");
-    }
-
-    error = sem_close(s3);
-    if(!error){
-        error = sem_unlink("/semEncargado");
-        if(error){
-            perror("sem_unlink()");
-        }
-        else {
-            printf("Semaforo borrado!\n");
-        }        
-    }else{
-        perror("sem_close()");
-    }
-
-    error = sem_close(s4);
-    if(!error){
-        error = sem_unlink("/semCocinero");
-        if(error){
-            perror("sem_unlink()");
-        }
-        else {
-            printf("Semaforo borrado!\n");
-        }        
-    }else{
-        perror("sem_close()");
-    }
-
-    error = sem_close(s5);
-    if(!error){
-        error = sem_unlink("/semPedidos");
-        if(error){
-            perror("sem_unlink()");
-        }
-        else {
-            printf("Semaforo borrado!\n");
-        }        
-    }else{
-        perror("sem_close()");
-    }
-    
-    /*  
-    borrarSemaforo(s1,);
-    borrarSemaforo(s2, "/semEncargado");
-    borrarSemaforo(s3, "/semCocinero");
-    */
+    borrarSemaforo(s1, s2, s3, s4, s5);
 
     return 0;
 }
@@ -239,10 +165,8 @@ void cargarPedido(Encargado * encargado){
 void * gestionCocinero(void * tmp) {
     Sincronizacion *cocinero = (Sincronizacion *) tmp;
     printf("-- INICIO FUNCION GESTION COCINERO --\n");
-    while(corte != 1){
+    while(corte != 1)
         nuevoPedido(cocinero);
-        pedidoCocinado(cocinero);
-    }
     printf("-- FIN FUNCION GESTION COCINERO --\n");
     pthread_exit(NULL);
 }
@@ -308,23 +232,70 @@ Encargado * inicializarEncargado(Sincronizacion *sincro, sem_t *s3, sem_t *s4){
     return tmp;
 }
 
-void borrarSemaforo(sem_t * semaforo, char * nombreArchivo){
+void borrarSemaforo(sem_t * s1, sem_t * s2, sem_t * s3, sem_t * s4, sem_t * s5){
     int error = 0;
-    error=sem_close(semaforo);
-      if (error) {
-	perror("sem_close()");
-      }
-      else {
-	printf("Semaforo cerrado\n");
-      }
-    
-    if (!error) {
-      error = sem_unlink(nombreArchivo);
-      if (error) {
-	perror("sem_unlink()");
-      }
-      else {
-	printf("Semaforo borrado!\n");
-      }
+    error = sem_close(s1);
+    if(!error){
+        error = sem_unlink("/semTelefono");
+        if(error){
+            perror("sem_unlink()");
+        }
+        else {
+            printf("Semaforo borrado!\n");
+        }
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s2);
+    if(!error){
+        error = sem_unlink("/semLlamada");
+        if(error){
+            perror("sem_unlink()");
+        }
+        else {
+            printf("Semaforo borrado!\n");
+        }        
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s3);
+    if(!error){
+        error = sem_unlink("/semEncargado");
+        if(error){
+            perror("sem_unlink()");
+        }
+        else {
+            printf("Semaforo borrado!\n");
+        }        
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s4);
+    if(!error){
+        error = sem_unlink("/semCocinero");
+        if(error){
+            perror("sem_unlink()");
+        }
+        else {
+            printf("Semaforo borrado!\n");
+        }        
+    }else{
+        perror("sem_close()");
+    }
+
+    error = sem_close(s5);
+    if(!error){
+        error = sem_unlink("/semPedidos");
+        if(error){
+            perror("sem_unlink()");
+        }
+        else {
+            printf("Semaforo borrado!\n");
+        }        
+    }else{
+        perror("sem_close()");
     }
 }
