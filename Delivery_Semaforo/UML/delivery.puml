@@ -1,0 +1,8 @@
+@startuml Delivery
+    [*] --> Libre
+    Libre -right-> EntregandoPedido : nuevoPedido()
+    EntregandoPedido -right-> EntregandoDinero : pedidoEntregado()
+    EntregandoDinero --> Libre : esperandoPedido()
+    EntregandoDinero --> [*] : ultimoPedido()
+    EntregandoDinero -right-> EntregandoPedido : nuevoPedido()
+@endumld

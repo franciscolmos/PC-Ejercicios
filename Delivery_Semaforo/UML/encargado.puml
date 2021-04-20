@@ -1,0 +1,10 @@
+@startuml Encargado
+    [*] --> Libre
+    Libre --> Cobrando : cobrar()
+    Libre --> TomandoPedido : nuevoPedido()
+    TomandoPedido -right-> Cobrando : cobrar()
+    TomandoPedido --> Libre : listo()
+    Cobrando -up-> Libre : listo()
+    Cobrando -right-> TomandoPedido : nuevoPedido()
+    Cobrando --> [*] : ultimoPedido()
+@enduml
