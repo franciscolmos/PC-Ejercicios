@@ -140,7 +140,6 @@ void * gestionTelefono(void * tmp){
       telefono->pedido->id = i;
       printf("\ttelefono sonando\n");
     }
-      //telefono->pedido->id = rand() % CARTA;
     sem_post(telefono->semaforoLlamadas);
   }
   pthread_exit(NULL);

@@ -259,16 +259,21 @@ void cobrarPedido(Encargado * encargado){
     }
 
     if( pedidoActual != -1) {
-      for (int i = 0; i < DELIVERIES; i++){
-          printf("BUFFER ID: %d - POSICON: %d\n", buffer->buf[i].id, i);
-      }
+      usleep(rand()% 100001 + 250000);
       printf("\t\tDinero de pedido %d guardado en caja\n", pedidoActual);
-      usleep(rand()% 1000001 + 1000000);
+      for (int i = 0; i < DELIVERIES; i++){
+        printf("BUFFER ID: %d - POSICON: %d\n", buffer->buf[i].id, i);
+      }
     }else{
+      for (int i = 0; i < DELIVERIES; i++){
+        printf("BUFFER ID: %d - POSICON: %d\n", buffer->buf[i].id, i);
+      }
       encargado->ultimoPedido = -1;
     }
+
     if (!error)
       error = sem_post(buffer->vacio);
+    
     sem_wait(encargado->semaforoDelivery);
   }
 }
@@ -331,8 +336,14 @@ void pedidoListo(Cocinero * cocinero, int pedidoListo){
     // Carga en el lugar correspondiente el nuevo pedido listo para ser repartido para el delivery.
     buffer->buf[buffer->fin].id = pedidoListo;
     usleep(rand() % 100001 + 100000);
-    if( pedidoListo != -1)
+    if( pedidoListo != -1) {
       printf("\t\t\tPedido %d listo para ser repartido\n", buffer->buf[buffer->fin].id);
+    }
+    else {
+      for (int i = 0; i < PEDIDOS; i++){
+          printf("BUFFER ID: %d - POSICON: %d\n", buffer->buf[i].id, i);
+      }
+    }
     buffer->fin = ++buffer->fin % PEDIDOS; // Actualiza el proximo lugar a escribir y si exede la capacidad del buffer, vuelve al inicio
     error = sem_post(buffer->escribiendo);
   }
@@ -348,7 +359,7 @@ void * gestionDelivery(void * tmp){
   while(*terminado != -1){
     int deliverysOcupados = 0;
     sem_getvalue(delivery->semaforoDelivery, &deliverysOcupados);
-    //printf("cantidad de deliverys: %d\n",deliverysOcupados);
+    // printf("cantidad de deliverys: %d\n",deliverysOcupados);
     if(deliverysOcupados == 0){
       repartirPedido(delivery, terminado);
     }
@@ -368,6 +379,7 @@ void repartirPedido(Delivery * delivery, int * terminado){
   if (!error) {
     pedidoRepartir = buffer->buf[buffer->inicio].id;
     buffer->inicio = ++buffer->inicio % PEDIDOS; // Actualiza el proximo lugar a leer y si excede la capacidad del buffer, vuelve al inicio
+    printf("Proximo lugar a leer -- %d\n", buffer->inicio);
     error = sem_post(buffer->leyendo);
   }
 
@@ -377,21 +389,26 @@ void repartirPedido(Delivery * delivery, int * terminado){
     printf("\t\t\t\tpedido %d entregado\n", pedidoRepartir);
     usleep(rand()% 1000001 + 1000000);
     registrarCobro(delivery, pedidoRepartir);
-  }else{
+  }
+  else {
     delivery->cantDeliveries--;
-    //printf("cantidad de deliverys que quedan: %d", delivery->cantDeliveries);
+    printf("1-cantidad de deliverys que quedan: %d\n", delivery->cantDeliveries);
     * terminado = -1;
   }
-  if(delivery->cantDeliveries == 0){
-    printf("cantidad de deliverys que quedan: %d\n",delivery->cantDeliveries);
-    for(int i = 0; i < ENCARGADOS; i++){
+  if(delivery->cantDeliveries == 0) {
+    printf("2-cantidad de deliverys que quedan: %d\n",delivery->cantDeliveries);
+    for(int i = 0; i < ENCARGADOS; i++) {
       registrarCobro(delivery, -1);
     }
+    sem_post(delivery->semaforoDelivery);
   }
 
   if (!error)
     error = sem_post(buffer->vacio);
-  sem_post(delivery->semaforoDelivery);
+  
+  if(pedidoRepartir != -1) {
+    sem_post(delivery->semaforoDelivery);
+  }
 }
 
 void registrarCobro(Delivery * delivery, int pedidoCobrar){
