@@ -18,12 +18,12 @@
 //enum pedidos {PIZZA, LOMITO, HAMBURGUESA, PAPAS, SANGUCHE};
 
 // Precios de los menues
-//float precios[8] = {250, 350, 300, 150, 250};
+float precios[CARTA] = {250, 350, 300, 150, 250};
 
 // ESTRUCTURA DEL PEDIDO
 typedef struct{
   int id;
-  float * precio;
+  float precio;
 }Pedido;
 
 // BUFFER CIRUCULAR PARA ALMACENAR PEDIDOS
@@ -74,7 +74,6 @@ typedef struct{
 // Buffers
 bBuffer * crearBufferCocinero();
 bBuffer * crearBufferDelivery();
-bBuffer * crearBufferCobros();
 
 // Actores
 Telefono * crearTelefono();
@@ -116,10 +115,6 @@ int main(){
   // Creamos los buffers circulares que seran compartidos entre los actores
   bBuffer * bbCocinero = crearBufferCocinero();
   bBuffer * bbDelivery = crearBufferDelivery();
-
-  // Creamos el semaforo delivery que sera compartido entre Delivery y Encargado
-  sem_t * semaforoDelivery = (sem_t *)(calloc(1, sizeof(sem_t)));
-  semaforoDelivery = sem_open("/semDelivery", O_CREAT, O_RDWR, 0);
 
   sem_t * semaforoPedidosPorCobrar = (sem_t *)(calloc(1, sizeof(sem_t)));
   semaforoPedidosPorCobrar = sem_open("/semPedidosPorCobrar", O_CREAT, O_RDWR, 0);
@@ -205,13 +200,6 @@ void * gestionEncargado(void * tmp){
     atenderPedido(encargado);
     cobrarPedido(encargado);
   }
-  // int semaforo = 0;
-  // sem_getvalue(encargado->telefono->semaforoTelefono, &semaforo);
-  // printf("El valor del semaforo telefono es: %d\n", semaforo);
-  // sem_getvalue(encargado->telefono->semaforoLlamadas, &semaforo);
-  // printf("El valor del semaforo llamadas es: %d\n", semaforo);
-  // sem_getvalue(encargado->semaforoDelivery, &semaforo);
-  // printf("El valor del semaforo deliveries es: %d\n", semaforo);
   pthread_exit(NULL);
 }
 
@@ -261,12 +249,17 @@ void cobrarPedido(Encargado * encargado){
   // Se fija si hay algun delivery esperando para que le cobre
   sem_getvalue(encargado->semaforoPedidosPorCobrar, &cobrosPendientes);
   if(cobrosPendientes > 0){
-    int error = 0;
-    int pedidoActual = 0;
     sem_post(encargado->semaforoDejarDinero);
     sem_wait(encargado->semaforoTomarDinero);
-    printf("\t\tdinero guardado en caja de pedido %d", encargado->pedidoPorCobrar->id);
+    if( encargado->pedidoPorCobrar->id != -1) {
+      printf("\t\t$%.0f guardado de pedido %d\n", encargado->pedidoPorCobrar->precio, encargado->pedidoPorCobrar->id);
+    }
+    else {
+      printf("\t\tCerrando local\n");
+      encargado->ultimoPedido = -1;
+    }
     sem_post(encargado->semaforoPedidosPorCobrar);
+  }
 }
 
 // Hilo Cocinero
@@ -389,17 +382,18 @@ void repartirPedido(Delivery * delivery, int * terminado) {
 }
 
 void avisarCobro(Delivery * delivery, int pedidoCobrar){
-  int error=0;
   sem_post(delivery->semaforoPedidosPorCobrar);
   sem_wait(delivery->semaforoDejarDinero);
-  printf("\t\t\t\tdejando dinero de pedido %d", pedidoCobrar);
+  if(pedidoCobrar != -1) {
+    printf("\t\t\t\tdejando dinero de pedido %d\n", pedidoCobrar);
+  }
   usleep(100000);
   delivery->pedidoPorCobrar->id = pedidoCobrar;
+  delivery->pedidoPorCobrar->precio = precios[rand()%CARTA];
   sem_post(delivery->semaforoTomarDinero);
 }
 
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
-
 // Creacion de Buffer de Cocinero
 bBuffer * crearBufferCocinero() {
   int error = 0;
@@ -490,52 +484,6 @@ bBuffer * crearBufferDelivery() {
   return bb;
 }
 
-// Creacion de Buffer de Cobros
-bBuffer * crearBufferCobros() {
-
-  int error = 0;
-
-  bBuffer * bb = (bBuffer *)calloc(1, sizeof(bBuffer));
-
-  bb->lleno = sem_open("/llenoCobros", O_CREAT, 0640, 0);
-  if (bb->lleno != SEM_FAILED) {
-    // printf("Semaforo [lleno] creado!\n");
-  }
-  else {
-    perror("sem_open()");
-    error -= 1;
-  }
-
-  bb->vacio = sem_open("/vacioCobros", O_CREAT, 0640, DELIVERIES);
-  if (bb->lleno != SEM_FAILED) {
-    // printf("Semaforo [vacio] creado!\n");
-  }
-  else {
-    perror("sem_open()");
-    error -= 1;
-  }
-
-  bb->leyendo = sem_open("/leyendoCobros", O_CREAT, 0640, 1);
-  if (bb->lleno != SEM_FAILED) {
-    // printf("Semaforo [leyendo] creado!\n");
-  }
-  else {
-    perror("sem_open()");
-    error -= 1;
-  }
-
-  bb->escribiendo = sem_open("/escribiendoCobros", O_CREAT, 0640, 1);
-  if (bb->lleno != SEM_FAILED) {
-    // printf("Semaforo [escribiendo] creado!\n");
-  }
-  else {
-    perror("sem_open()");
-    error -= 1;
-  }
-
-  return bb;
-}
-
 // Creacion de Telefono
 Telefono * crearTelefono() {
   Telefono * telefono = (Telefono *)(calloc(1, sizeof(Telefono)));
@@ -580,6 +528,9 @@ Delivery * crearDelivery(sem_t * semaforoPedidosPorCobrar, sem_t * semaforoDejar
   return delivery;
 }
 
+/*-----------------FUNCIONES DE LIBERACION DE MEMORIA---------------------*/
+
+
 // Borrado de semaforos
 void borrarSemaforos(Encargado * enc, Delivery * del) {
   int status=0;
@@ -603,15 +554,35 @@ void borrarSemaforos(Encargado * enc, Delivery * del) {
   else
     perror("sem_close()");
 
-  // Semaforo Delivery
-  status = sem_close(enc->semaforoDelivery);
+  // Semaforo PedidosPorCobrar
+  status = sem_close(enc->semaforoPedidosPorCobrar);
   if (!status) {
-    status = sem_unlink("/semDelivery");
+    status = sem_unlink("/semPedidosPorCobrar");
     if (status)
       perror("sem_unlink()");
   }
   else
     perror("sem_close()");
+
+  // Semaforo PedidosPorCobrar
+  status = sem_close(enc->semaforoDejarDinero);
+  if (!status) {
+    status = sem_unlink("/semDejarDinero");
+    if (status)
+      perror("sem_unlink()");
+  }
+  else
+    perror("sem_close()");
+
+  // Semaforo PedidosPorCobrar
+  status = sem_close(enc->semaforoTomarDinero);
+  if (!status) {
+    status = sem_unlink("/semCobrarDinero");
+    if (status)
+      perror("sem_unlink()");
+  }
+  else
+    perror("sem_close()");    
 
   // Semaforo Buffer Cocinero Lleno
   status = sem_close(enc->bbCocinero->lleno);
@@ -687,46 +658,6 @@ void borrarSemaforos(Encargado * enc, Delivery * del) {
   status = sem_close(del->bbDelivery->leyendo);
   if (!status) {
     status = sem_unlink("/leyendoDelivery");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo Buffer Cobros Lleno
-  status = sem_close(enc->bbCobros->lleno);
-  if (!status) {
-    status = sem_unlink("/llenoCobros");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo Buffer Cobros Vacio
-  status = sem_close(enc->bbCobros->vacio);
-  if (!status) {
-    status = sem_unlink("/vacioCobros");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo Buffer Cobros Escribiendo
-  status = sem_close(enc->bbCobros->escribiendo);
-  if (!status) {
-    status = sem_unlink("/escribiendoCobros");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo Buffer Cobros Leyendo
-  status = sem_close(enc->bbCobros->leyendo);
-  if (!status) {
-    status = sem_unlink("/leyendoCobros");
     if (status)
       perror("sem_unlink()");
   }
