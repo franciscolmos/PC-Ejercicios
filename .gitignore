@@ -1,3 +1,6 @@
 /.vscode
 /prueba.c
 /Entregas
+/BBuffer.c
+/BBuffer.h
+/Delivery_Semaforo/deliver_semaforo_refinando.c

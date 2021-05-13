@@ -1,0 +1,7 @@
+@startuml Telefono
+    [*] --> EsperaDePedido
+    EsperaDePedido --> Llamando : sonando()
+    Llamando --> EnLlamada: telefonoAtendido()
+    EnLlamada --> EsperaDePedido : pedidoCargado()
+    EnLlamada --> [*] : ultimoPedidoCargado()
+@endumlx
