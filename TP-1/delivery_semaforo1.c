@@ -36,7 +36,6 @@ typedef struct {
   sem_t * semaforoDejarDinero; // Delivery: y automaticamanete hace wait sobre dejarDinero y se encola | Encargado: hace post sobre este semaforo para dejar pasar al primer delivery que esta listo para entregar el dinero.
   sem_t * semaforoCobrarDinero; // Delivery: printea entregadno dinero encargado  y luego hace post en tomarDinero | Encargado: printea dinero en caja y hace wait para indicar esto. Luego haca wait a semaforoPedidosPorCobrar.
   int dato;
-  // int ubiMemoria;
 }Memoria;
 
 // ESTRUCTURA DEL TELEFONO
@@ -58,14 +57,16 @@ typedef struct{
   Telefono * telefono;
   struct Monitor_t *monitorComandas;
   int ultimoPedido;
-  int memoria;
+  int ubiMemoria;
+  Memoria * memoria;
 }Encargado;
 
 // ESTRUCTURA DEL DELIVERY
 typedef struct{
   struct Monitor_t *monitorPedidos;
   int cantDeliveries;
-  int memoria;
+  int ubiMemoria;
+  Memoria * memoria;
 }Delivery;
 
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
@@ -74,12 +75,14 @@ Telefono * crearTelefono();
 Encargado * crearEncargado(Telefono *, struct Monitor_t *, int);
 Cocinero * crearCocinero(struct Monitor_t *, struct Monitor_t *);
 Delivery * crearDelivery(struct Monitor_t *, int);
-//Memoria * crearMemoria();
+
+// Memoria
 int crearMemoria();
+void llenarMemoria(int);
 
 /*-------------------FUNCIONES DE LIBREACION DE MEMORIA-----------------------*/
-// Borrado de semaforos
-void borrarSemaforos(Encargado *, Delivery *);
+// Borrado de semaforos y memoria
+void borrarSemMem(Encargado *);
 
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 //Funciones de telefono
@@ -106,18 +109,14 @@ void avisarCobro(Delivery *, int);
 /*----------------------------------MAIN---------------------------------------*/
 
 int main(){
+  srand(time(NULL));
 
   // Creamos los monitores
-  struct Monitor_t *monitorComandas = NULL;
-  monitorComandas = CrearMonitor(4);
-  struct Monitor_t *monitorPedidos = NULL;
-  monitorPedidos = CrearMonitor(4);
+  struct Monitor_t * monitorComandas = CrearMonitor(4);
+  struct Monitor_t * monitorPedidos = CrearMonitor(4);
 
-  // Creamos la memoria
-  //Memoria * memoria = (Memoria*)(calloc(1, sizeof(Memoria)));
+  // Creamos la memoria y traemos su ubiacion
   int memoria =  crearMemoria();
-
-  srand(time(NULL));
 
   // Se crean los actores del juego
   Telefono * telefono = crearTelefono();
@@ -152,7 +151,7 @@ int main(){
   }
 
   // Se liberan los semaforos
-  borrarSemaforos(encargado, delivery);
+  borrarSemMem(encargado);
 
   // Borramos los monitores
   BorrarMonitor(monitorComandas);
@@ -163,16 +162,6 @@ int main(){
   free(encargado);
   free(cocinero);
   free(delivery);
-
-  if (memoria > 0) {
-    error = shm_unlink("/memCompartida");
-    if (error) {
-      perror("unlink()");
-    }
-    else {
-      printf("Descriptor de memoria borrado!\n");
-    }
-  }
 
   return 0;
 }
@@ -209,12 +198,14 @@ void * gestionTelefono(void * tmp){
 
 // Hilo Encargado
 void * gestionEncargado(void * tmp){
-  Encargado *encargado = (Encargado *) tmp;
-  Memoria* memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->memoria, 0); // mapear la estructura 
+  Encargado * encargado = (Encargado *) tmp;
+  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
   while(encargado->ultimoPedido != -1){
     atenderPedido(encargado);
     cobrarPedido(encargado);
   }
+
+  //Termino el hilo
   pthread_exit(NULL);
 }
 
@@ -251,37 +242,30 @@ void cargandoPedido (Encargado * encargado, int codigoPedido) {
 }
 
 void cobrarPedido(Encargado * encargado){
-  int *datos = NULL;
-  int error = 0;
   int cobrosPendientes = 0;
   // Se fija si hay algun delivery esperando para que le cobre
-  sem_getvalue(encargado->semaforoPedidosPorCobrar, &cobrosPendientes);
+  sem_getvalue(encargado->memoria->semaforoPedidosPorCobrar, &cobrosPendientes);
+  // printf("cobrosPendientes: %d\n", cobrosPendientes);
   if(cobrosPendientes > 0){
-    sem_post(encargado->semaforoDejarDinero);
-    sem_wait(encargado->semaforoTomarDinero);
-    datos = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->mem, 0); // mapear la estructura completa que es compartida junto con el delivery. Tiene que tener los 3 semaforos y el dato.
-    if( *datos != -1) {
-      printf("\t\t$%.0f guardado de pedido %d\n", precios[rand()%CARTA], *datos);
+    sem_post(encargado->memoria->semaforoDejarDinero);
+    sem_wait(encargado->memoria->semaforoCobrarDinero);
+    if( encargado->memoria->dato != -1) {
+      printf("\t\t$%.0f guardados de pedido %d\n", precios[rand()%CARTA], encargado->memoria->dato);
     }
     else {
       printf("\t\tCerrando local\n");
       encargado->ultimoPedido = -1;
     }
-    if (datos != NULL) {
-      error = munmap((void*)(datos), 2 * sizeof(int));
-      if (error) {
-        perror("munmap()");
-      }
-    }
-    sem_post(encargado->semaforoPedidosPorCobrar);
+    // Por qué hacemos este post?
+    // sem_post(encargado->memoria->semaforoPedidosPorCobrar);
   }
 }
 
 // Hilo Cocinero
 void * gestionCocinero(void * tmp) {
-  int * terminado = (int *)(calloc(1, sizeof(int)));
   Cocinero *cocinero = (Cocinero *) tmp;
-  while(* terminado != -1) {
+  int * terminado = (int *)(calloc(1, sizeof(int)));
+  while(*terminado != -1) {
     cocinarPedido(cocinero, terminado);
   }
   pthread_exit(NULL);
@@ -331,10 +315,25 @@ void pedidoListo(Cocinero * cocinero, int pedidoListo){
 void * gestionDelivery(void * tmp){
   Delivery * delivery = (Delivery *)(tmp);
   int * terminado = (int *)(calloc(1, sizeof(int)));
-  
-  while(*terminado != -1) {
+
+  // Agregamos condicion para que no se mapee 2 veces
+  if(delivery->memoria == NULL)
+    delivery->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, delivery->ubiMemoria, 0);
+
+  // El Delivery trabaja
+  while(*terminado != -1)
     repartirPedido(delivery, terminado);
+
+  // Desmapeo la memoria, si es el ultimo delivery
+  if(delivery->cantDeliveries == 0){
+      if (delivery->memoria != NULL) {
+        int error = munmap((void*)(delivery->memoria), 2 * sizeof(Memoria));
+        if (error)
+          perror("delivery_munmap()");
+      }
   }
+
+  // Termino el hilo
   pthread_exit(NULL);
 }
 
@@ -359,31 +358,20 @@ void repartirPedido(Delivery * delivery, int * terminado) {
     }
 
     // Si es el ultimo delivery que termina, avisa al encargado que termino
-    if(delivery->cantDeliveries == 0) {
-      for(int i = 0; i < ENCARGADOS; i++) {
-        avisarCobro(delivery, -1);
-      }
-    }
+    if(delivery->cantDeliveries == 0)
+      avisarCobro(delivery, -1);
   }
 }
 
 void avisarCobro(Delivery * delivery, int pedidoCobrar){
-  int *datos = NULL;
-  int error = 0;
-  sem_post(delivery->semaforoPedidosPorCobrar);
-  sem_wait(delivery->semaforoDejarDinero);
+  sem_post(delivery->memoria->semaforoPedidosPorCobrar);
+  sem_wait(delivery->memoria->semaforoDejarDinero);
   if(pedidoCobrar != -1) {
     printf("\t\t\t\tdejando dinero de pedido %d\n", pedidoCobrar);
   }
   usleep(100000);
-  *datos = pedidoCobrar;
-  if (datos != NULL) {
-      error = munmap((void*)(datos), 2 * sizeof(int));
-      if (error) {
-        perror("munmap()");
-      }
-    }
-  sem_post(delivery->semaforoTomarDinero);
+  delivery->memoria->dato = pedidoCobrar;
+  sem_post(delivery->memoria->semaforoCobrarDinero);
 }
 
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
@@ -403,7 +391,8 @@ Encargado * crearEncargado(Telefono *telefono, struct Monitor_t * monitorComanda
   Encargado * encargado = (Encargado *)(calloc(1, sizeof(Encargado)));
   encargado->telefono = telefono;
   encargado->monitorComandas = monitorComandas;
-  encargado->memoria = memoria;
+  encargado->ubiMemoria = memoria;
+  encargado->memoria = NULL;
   return encargado;
 }
 
@@ -417,73 +406,65 @@ Cocinero * crearCocinero(struct Monitor_t * monitorComandas, struct Monitor_t * 
 }
 
 // Creacion de Delivery
-Delivery * crearDelivery(struct Monitor_t * monitorPedidos, int memoria){
+Delivery * crearDelivery(struct Monitor_t * monitorPedidos, int memoria) {
   Delivery * delivery = (Delivery *)(calloc(1, sizeof(Delivery)));
   delivery->monitorPedidos = monitorPedidos;
   delivery->cantDeliveries = DELIVERIES;
-  delivery->memoria = memoria;
+  delivery->ubiMemoria = memoria;
+  delivery->memoria = NULL;
   return delivery;
 }
 
-/* Memoria* crearMemoria(){
+int crearMemoria() {
   int error = 0;
-  Memoria * memoria = (Memoria*)(calloc(1,sizeof(Memoria)));
-  memoria->semaforoPedidosPorCobrar = (sem_t *)(calloc(1, sizeof(sem_t)));
-  memoria->semaforoPedidosPorCobrar = sem_open("/semPedidosPorCobrar", O_CREAT, O_RDWR, 0);
 
-  memoria->semaforoDejarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
-  memoria->semaforoDejarDinero = sem_open("/semDejarDinero", O_CREAT, O_RDWR, 0);
-
-  memoria->semaforoCobrarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
-  memoria->semaforoCobrarDinero = sem_open("/semCobrarDinero", O_CREAT, O_RDWR, 0);
-
-  memoria->ubiMemoria = shm_open("/memCompartida", O_CREAT | O_RDWR, 0660);
-  if (memoria->ubiMemoria < 0) {
-    perror("shm_open()");
-    error = -1;
-  }
-  if (!error) {
-    printf("Descriptor de memoria creado!\n");
-    error = ftruncate(memoria->ubiMemoria, sizeof(Memoria));
-    if (error)
-      perror("ftruncate()");
-  }
-  
-  return memoria;
-} */
-
-int crearMemoria(){
-  int error = 0;
-  Memoria * memoria = (Memoria*)(calloc(1,sizeof(Memoria)));
-  memoria->semaforoPedidosPorCobrar = (sem_t *)(calloc(1, sizeof(sem_t)));
-  memoria->semaforoPedidosPorCobrar = sem_open("/semPedidosPorCobrar", O_CREAT, O_RDWR, 0);
-
-  memoria->semaforoDejarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
-  memoria->semaforoDejarDinero = sem_open("/semDejarDinero", O_CREAT, O_RDWR, 0);
-
-  memoria->semaforoCobrarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
-  memoria->semaforoCobrarDinero = sem_open("/semCobrarDinero", O_CREAT, O_RDWR, 0);
-
+  // Creo la memoria
   int ubiMemoria = shm_open("/memCompartida", O_CREAT | O_RDWR, 0660);
   if (ubiMemoria < 0) {
     perror("shm_open()");
     error = -1;
   }
   if (!error) {
-    printf("Descriptor de memoria creado!\n");
     error = ftruncate(ubiMemoria, sizeof(Memoria));
     if (error)
       perror("ftruncate()");
   }
-  
+
+  // Lleno la memoria
+  llenarMemoria(ubiMemoria);
+
+  // Devuelvo la ubicacion de la memoria.
   return ubiMemoria;
+}
+
+void llenarMemoria(int ubicacion) {
+  // Mapeo una referencia a la memoria e inicializo la estructura que lleva adentro.
+  Memoria * temp = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, ubicacion, 0);
+
+  temp->semaforoPedidosPorCobrar = (sem_t *)(calloc(1, sizeof(sem_t)));
+  temp->semaforoPedidosPorCobrar = sem_open("/semPedidosPorCobrar", O_CREAT, O_RDWR, 0);
+
+  temp->semaforoDejarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
+  temp->semaforoDejarDinero = sem_open("/semDejarDinero", O_CREAT, O_RDWR, 0);
+
+  temp->semaforoCobrarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
+  temp->semaforoCobrarDinero = sem_open("/semCobrarDinero", O_CREAT, O_RDWR, 0);
+
+  temp->dato = 0;
+
+  // Desmapeo la referencia.
+  if (temp != NULL) {
+    int error = munmap((void*)(temp), 2 * sizeof(Memoria));
+    if (error) {
+      perror("creacion_memoria_munmap()");
+    }
+  }
 }
 
 /*-----------------FUNCIONES DE LIBERACION DE MEMORIA---------------------*/
 
-
-// Borrado de semaforos
-void borrarSemaforos(Encargado * enc, Delivery * del) {
+// Borrado de semaforos y memoria
+void borrarSemMem(Encargado * enc) {
   int status=0;
   // Semaforo Telefono
   status = sem_close(enc->telefono->semaforoTelefono);
@@ -506,7 +487,7 @@ void borrarSemaforos(Encargado * enc, Delivery * del) {
     perror("sem_close()");
 
   // Semaforo PedidosPorCobrar
-  status = sem_close(enc->semaforoPedidosPorCobrar);
+  status = sem_close(enc->memoria->semaforoPedidosPorCobrar);
   if (!status) {
     status = sem_unlink("/semPedidosPorCobrar");
     if (status)
@@ -516,7 +497,7 @@ void borrarSemaforos(Encargado * enc, Delivery * del) {
     perror("sem_close()");
 
   // Semaforo DejarDinero
-  status = sem_close(enc->semaforoDejarDinero);
+  status = sem_close(enc->memoria->semaforoDejarDinero);
   if (!status) {
     status = sem_unlink("/semDejarDinero");
     if (status)
@@ -526,7 +507,7 @@ void borrarSemaforos(Encargado * enc, Delivery * del) {
     perror("sem_close()");
 
   // Semaforo TomarDinero
-  status = sem_close(enc->semaforoTomarDinero);
+  status = sem_close(enc->memoria->semaforoCobrarDinero);
   if (!status) {
     status = sem_unlink("/semCobrarDinero");
     if (status)
@@ -534,4 +515,20 @@ void borrarSemaforos(Encargado * enc, Delivery * del) {
   }
   else
     perror("sem_close()");
+
+  // Desmapeo la memoria
+  if (enc->memoria != NULL) {
+    int error = munmap((void*)(enc->memoria), 2 * sizeof(Memoria));
+    if (error) {
+      perror("encargado_munmap()");
+    }
+  }
+
+  // Memoria Compartida
+  if (enc->ubiMemoria > 0) {
+    status = shm_unlink("/memCompartida");
+    if (status) {
+      perror("unlink()");
+    }
+  }
 }
