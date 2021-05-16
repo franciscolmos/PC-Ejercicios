@@ -17,7 +17,10 @@
 
 // Datos de entrada
 #define CARTA 5
-#define PEDIDOS 8
+#define ALARMA 5
+
+// Dato que indica que el juego termino
+int timeout = 1;
 
 // Carta ofrecida por la pizzeria
 //enum pedidos {PIZZA, LOMITO, HAMBURGUESA, PAPAS, SANGUCHE};
@@ -87,6 +90,7 @@ void borrarSemMem(Encargado *);
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 //Funciones de telefono
 void * gestionTelefono( void *);
+void TimeOut();
 
 //Funciones de encargado
 void * gestionEncargado(void *);
@@ -169,31 +173,33 @@ int main(){
 // Hilo telefono
 void * gestionTelefono(void * tmp){
   Telefono *telefono = (Telefono *) tmp;
-  // int terminado = 1;
-  // // Seteamos la alarma del juego
-  // signal(SIGALRM, TimeOut);
-  // alarm(6);
-  // while(terminado) {
-  //   sem_wait(telefono->semaforoTelefono);
-  //   usleep(rand()% 750001 + 250000);
-  //   printf("\ttelefono sonando\n");
-  //   sem_post(telefono->semaforoLlamadas);
-  // }
-  for (int i = 0; i < PEDIDOS; i++) {
+
+  // Seteamos la alarma del juego e iniciamos el contador
+  signal(SIGALRM, TimeOut);
+  alarm(ALARMA);
+  int terminar = 1;
+  while(terminar) {
     sem_wait(telefono->semaforoTelefono);
     usleep(rand()% 750001 + 250000);
+
     // Si es el ultimo pedido, le pasa el valor -1 que indica finalizacion del programa.
-    if(i == (PEDIDOS - 1)){
+    if(timeout){
+      telefono->pedido->id = rand() % CARTA;
+      printf("\ttelefono sonando\n");
+    }
+    else {
+      terminar = 0;
       telefono->pedido->id = -1;
       printf("\tDueño llamando para cerrar local\n");
     }
-    else {
-      telefono->pedido->id = i;
-      printf("\ttelefono sonando\n");
-    }
+
     sem_post(telefono->semaforoLlamadas);
   }
   pthread_exit(NULL);
+}
+
+void TimeOut() {
+  timeout = 0;
 }
 
 // Hilo Encargado
