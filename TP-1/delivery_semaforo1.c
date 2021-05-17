@@ -22,18 +22,18 @@
 // Dato que indica que el juego termino
 int timeout = 1;
 
-// Carta ofrecida por la pizzeria
-//enum pedidos {PIZZA, LOMITO, HAMBURGUESA, PAPAS, SANGUCHE};
-
-// Precios de los menues
+// Precios de la carta
 float precios[CARTA] = {250, 350, 300, 150, 250};
 
+
+/*--------------------------------ESTRUCTURAS-------------------------------*/
 // ESTRUCTURA DEL PEDIDO
 typedef struct{
   int id;
   float precio;
 }Pedido;
 
+// ESTRUCTURA DE LA MEMORIA
 typedef struct {
   sem_t * semaforoPedidosPorCobrar; //Delivery: el delivery hace post cuando vuelve a la pizzeria | Encargado: verificando constantemente este valor y cuando es > 0
   sem_t * semaforoDejarDinero; // Delivery: y automaticamanete hace wait sobre dejarDinero y se encola | Encargado: hace post sobre este semaforo para dejar pasar al primer delivery que esta listo para entregar el dinero.
@@ -48,13 +48,6 @@ typedef struct{
   Pedido * pedido;
 }Telefono;
 
-// ESTRUCTURA DEL COCINERO
-typedef struct{
-  struct Monitor_t *monitorComandas;
-  struct Monitor_t *monitorPedidos;
-  int cantCocineros;
-}Cocinero;
-
 // ESTRUCTURA DEL ENCARGADO
 typedef struct{
   Telefono * telefono;
@@ -63,6 +56,13 @@ typedef struct{
   int ubiMemoria;
   Memoria * memoria;
 }Encargado;
+
+// ESTRUCTURA DEL COCINERO
+typedef struct{
+  struct Monitor_t *monitorComandas;
+  struct Monitor_t *monitorPedidos;
+  int cantCocineros;
+}Cocinero;
 
 // ESTRUCTURA DEL DELIVERY
 typedef struct{
@@ -240,7 +240,7 @@ void cargandoPedido (Encargado * encargado, int codigoPedido) {
 
   usleep(rand() % 100001 + 100000);
   if( codigoPedido != -1)
-    printf("\t\tPedido %d cargado\n", codigoPedido);
+    printf("\t\tPedido %d de la carta cargado\n", codigoPedido);
 
   error = GuardarDato(encargado->monitorComandas, codigoPedido);
   if(error)
@@ -249,21 +249,20 @@ void cargandoPedido (Encargado * encargado, int codigoPedido) {
 
 void cobrarPedido(Encargado * encargado){
   int cobrosPendientes = 0;
+
   // Se fija si hay algun delivery esperando para que le cobre
   sem_getvalue(encargado->memoria->semaforoPedidosPorCobrar, &cobrosPendientes);
-  // printf("cobrosPendientes: %d\n", cobrosPendientes);
   if(cobrosPendientes > 0){
     sem_post(encargado->memoria->semaforoDejarDinero);
     sem_wait(encargado->memoria->semaforoCobrarDinero);
     if( encargado->memoria->dato != -1) {
-      printf("\t\t$%.0f guardados de pedido %d\n", precios[rand()%CARTA], encargado->memoria->dato);
+      printf("\t\t$%.0f guardados de pedido %d\n", precios[encargado->memoria->dato], encargado->memoria->dato);
     }
     else {
       printf("\t\tCerrando local\n");
       encargado->ultimoPedido = -1;
     }
-    // Por qué hacemos este post?
-    // sem_post(encargado->memoria->semaforoPedidosPorCobrar);
+    sem_trywait(encargado->memoria->semaforoPedidosPorCobrar);
   }
 }
 
@@ -421,6 +420,7 @@ Delivery * crearDelivery(struct Monitor_t * monitorPedidos, int memoria) {
   return delivery;
 }
 
+// Creacion de Memoria
 int crearMemoria() {
   int error = 0;
 
