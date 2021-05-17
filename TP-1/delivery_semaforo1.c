@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <pthread.h> /* POSIX -> gcc -pthread */
+#include <pthread.h>
 #include <semaphore.h>
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -25,14 +25,7 @@ int timeout = 1;
 // Precios de la carta
 float precios[CARTA] = {250, 350, 300, 150, 250};
 
-
 /*--------------------------------ESTRUCTURAS-------------------------------*/
-// ESTRUCTURA DEL PEDIDO
-typedef struct{
-  int id;
-  float precio;
-}Pedido;
-
 // ESTRUCTURA DE LA MEMORIA
 typedef struct {
   sem_t * semaforoPedidosPorCobrar; //Delivery: el delivery hace post cuando vuelve a la pizzeria | Encargado: verificando constantemente este valor y cuando es > 0
@@ -45,7 +38,7 @@ typedef struct {
 typedef struct{
   sem_t * semaforoTelefono;
   sem_t * semaforoLlamadas;
-  Pedido * pedido;
+  int pedido;
 }Telefono;
 
 // ESTRUCTURA DEL ENCARGADO
@@ -83,9 +76,9 @@ Delivery * crearDelivery(struct Monitor_t *, int);
 int crearMemoria();
 void llenarMemoria(int);
 
-/*-------------------FUNCIONES DE LIBREACION DE MEMORIA-----------------------*/
-// Borrado de semaforos y memoria
-void borrarSemMem(Encargado *);
+/*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
+void menu(Encargado *);
+void mostrarMenu();
 
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 //Funciones de telefono
@@ -93,7 +86,6 @@ void * gestionTelefono( void *);
 void TimeOut();
 
 //Funciones de encargado
-void * gestionEncargado(void *);
 void atenderPedido(Encargado *);
 void cargandoPedido(Encargado *, int);
 void cobrarPedido(Encargado *);
@@ -108,6 +100,11 @@ void pedidoListo(Cocinero *, int);
 void * gestionDelivery(void *);
 void repartirPedido(Delivery *, int *);
 void avisarCobro(Delivery *, int);
+
+
+/*-------------------FUNCIONES DE LIBREACION DE MEMORIA-----------------------*/
+// Borrado de semaforos y memoria
+void borrarSemMem(Encargado *);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
@@ -130,13 +127,11 @@ int main(){
 
   // Se instancian las variables hilos de cada objeto
   pthread_t hiloTelefono;
-  pthread_t hiloEncargado;
   pthread_t hilosCocineros[COCINEROS];
   pthread_t hilosDeliveries[DELIVERIES];
 
   // Se crean los hilos de cada objeto
   pthread_create(&hiloTelefono, NULL, gestionTelefono, (void *)(telefono));
-  pthread_create(&hiloEncargado, NULL, gestionEncargado, (void *)(encargado));
   for(int i = 0; i < COCINEROS; i++) {
     pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(cocinero));
   }
@@ -144,9 +139,17 @@ int main(){
     pthread_create(&hilosDeliveries[i], NULL, gestionDelivery, (void *)(delivery));
   }
 
+  // Gestion Encargado
+  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, memoria, 0);
+  while(encargado->ultimoPedido != -1){
+    atenderPedido(encargado);
+    cobrarPedido(encargado);
+  }
+
+  // HACE FALTA ESPERAR QUE TERMINEN LOS HILOS? SE SUPONE QUE EL
+  // ENCARGADO TERMINA CUANDO EL ULTIMO DELIVERY LE AVISA QUE TERMINO
   // Se espera que terminen todos los hilos
   pthread_join(hiloTelefono, NULL);
-  pthread_join(hiloEncargado, NULL);
   for(int i = 0; i < COCINEROS; i++) {
     pthread_join(hilosCocineros[i], NULL);
   }
@@ -170,6 +173,36 @@ int main(){
   return 0;
 }
 
+// Menu
+void menu(Encargado * encargado) {
+  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
+  int terminar = 0;
+  char eleccion;
+  do
+  {
+    mostrarMenu();
+    scanf(eleccion);
+  } while (terminar);
+  
+  // while(encargado->ultimoPedido != -1){
+  //   atenderPedido(encargado);
+  //   cobrarPedido(encargado);
+  // }
+}
+
+void mostrarMenu() {
+  char temp;
+  printf("|-------------------------------------------------------------------|");
+  printf("|--------------------     PIZZERIA      ----------------------------|");
+  printf("|                                                                   |");
+  printf("| 1. Comenzar juego.                                                |");
+  printf("| 2. Ver puntuacion.                                                |");
+  printf("| 3. Salir.                                                         |");
+  printf("|-------------------------------------------------------------------|");
+  printf("Ingrese una opcion: ");
+  scanf(temp);
+}
+
 // Hilo telefono
 void * gestionTelefono(void * tmp){
   Telefono *telefono = (Telefono *) tmp;
@@ -184,12 +217,12 @@ void * gestionTelefono(void * tmp){
 
     // Si es el ultimo pedido, le pasa el valor -1 que indica finalizacion del programa.
     if(timeout){
-      telefono->pedido->id = rand() % CARTA;
+      telefono->pedido = rand() % CARTA;
       printf("\ttelefono sonando\n");
     }
     else {
       terminar = 0;
-      telefono->pedido->id = -1;
+      telefono->pedido= -1;
       printf("\tDueño llamando para cerrar local\n");
     }
 
@@ -203,18 +236,6 @@ void TimeOut() {
 }
 
 // Hilo Encargado
-void * gestionEncargado(void * tmp){
-  Encargado * encargado = (Encargado *) tmp;
-  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
-  while(encargado->ultimoPedido != -1){
-    atenderPedido(encargado);
-    cobrarPedido(encargado);
-  }
-
-  //Termino el hilo
-  pthread_exit(NULL);
-}
-
 void atenderPedido(Encargado * encargado){
   int error = 0;
   // Verifica si hay alguna llamada entrante
@@ -222,7 +243,7 @@ void atenderPedido(Encargado * encargado){
   if(!error){
     printf("\t\ttelefono atendido\n");
     usleep(rand()% 100001 + 250000);
-    int codigoPedido = encargado->telefono->pedido->id;
+    int codigoPedido = encargado->telefono->pedido;
     printf("\t\ttelefono colgado\n");
     sem_post(encargado->telefono->semaforoTelefono);
 
@@ -387,7 +408,6 @@ Telefono * crearTelefono() {
   telefono->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
   telefono->semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
   telefono->semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
-  telefono-> pedido = (Pedido *)(calloc(1, sizeof(Pedido)));;
   return telefono;
 }
 
