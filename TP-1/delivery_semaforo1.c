@@ -173,35 +173,35 @@ int main(){
   return 0;
 }
 
-// Menu
-void menu(Encargado * encargado) {
-  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
-  int terminar = 0;
-  char eleccion;
-  do
-  {
-    mostrarMenu();
-    scanf(eleccion);
-  } while (terminar);
+// // Menu
+// void menu(Encargado * encargado) {
+//   encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
+//   int terminar = 0;
+//   char eleccion;
+//   do
+//   {
+//     mostrarMenu();
+//     scanf(eleccion);
+//   } while (terminar);
   
-  // while(encargado->ultimoPedido != -1){
-  //   atenderPedido(encargado);
-  //   cobrarPedido(encargado);
-  // }
-}
+//   // while(encargado->ultimoPedido != -1){
+//   //   atenderPedido(encargado);
+//   //   cobrarPedido(encargado);
+//   // }
+// }
 
-void mostrarMenu() {
-  char temp;
-  printf("|-------------------------------------------------------------------|");
-  printf("|--------------------     PIZZERIA      ----------------------------|");
-  printf("|                                                                   |");
-  printf("| 1. Comenzar juego.                                                |");
-  printf("| 2. Ver puntuacion.                                                |");
-  printf("| 3. Salir.                                                         |");
-  printf("|-------------------------------------------------------------------|");
-  printf("Ingrese una opcion: ");
-  scanf(temp);
-}
+// void mostrarMenu() {
+//   char temp;
+//   printf("|-------------------------------------------------------------------|");
+//   printf("|--------------------     PIZZERIA      ----------------------------|");
+//   printf("|                                                                   |");
+//   printf("| 1. Comenzar juego.                                                |");
+//   printf("| 2. Ver puntuacion.                                                |");
+//   printf("| 3. Salir.                                                         |");
+//   printf("|-------------------------------------------------------------------|");
+//   printf("Ingrese una opcion: ");
+//   scanf(temp);
+// }
 
 // Hilo telefono
 void * gestionTelefono(void * tmp){
@@ -210,24 +210,23 @@ void * gestionTelefono(void * tmp){
   // Seteamos la alarma del juego e iniciamos el contador
   signal(SIGALRM, TimeOut);
   alarm(ALARMA);
-  int terminar = 1;
-  while(terminar) {
+
+  while(timeout) {
     sem_wait(telefono->semaforoTelefono);
     usleep(rand()% 750001 + 250000);
 
-    // Si es el ultimo pedido, le pasa el valor -1 que indica finalizacion del programa.
-    if(timeout){
-      telefono->pedido = rand() % CARTA;
-      printf("\ttelefono sonando\n");
-    }
-    else {
-      terminar = 0;
-      telefono->pedido= -1;
-      printf("\tDueño llamando para cerrar local\n");
-    }
+    telefono->pedido = rand() % CARTA;
+    printf("\ttelefono sonando\n");
 
     sem_post(telefono->semaforoLlamadas);
   }
+
+  // Envia el último pedido
+  telefono->pedido= -1;
+  printf("\tDueño llamando para cerrar local\n");
+  sem_post(telefono->semaforoLlamadas);
+
+  // Termina el hilo
   pthread_exit(NULL);
 }
 
