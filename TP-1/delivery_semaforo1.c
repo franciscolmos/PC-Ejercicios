@@ -83,6 +83,9 @@ void llenarMemoria(int);
 void menu(Telefono *, Encargado *, Cocinero *, Delivery *);
 void mostrarMenu();
 void comenzarJuego(Telefono *, Encargado *, Cocinero *, Delivery *);
+//int comenzarJuego(Telefono *, Encargado *, Cocinero *, Delivery *); La idea es que devuelva el score
+int  chequearPuntuacion(int); // Aca chequea si el score entra en el top 10
+void guardarPuntuacion(int);  // Lo guarda
 void verPuntuacion();
 void salir();
 
@@ -157,18 +160,23 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
   do
   {
     mostrarMenu();
+
     do{
       eleccion = getch();
-      if(eleccion != '1' && eleccion != '2' && eleccion != '3'){
+      if(eleccion != '1' && eleccion != '2' && eleccion != '3' && eleccion != '4') {
         printf("\nOpcion invalida, por favor seleccion 1 2 o 3\nIngrese una opcion: ");
       }
-    }while(eleccion != '1' && eleccion != '2' && eleccion != '3' );
+    }while(eleccion != '1' && eleccion != '2' && eleccion != '3' && eleccion != '4' );
+
     switch (eleccion)
     {
     case '1':
         system("clear");
         // terminar = 0;
+        int puntuacion = 0;
         comenzarJuego(telefono, encargado, cocinero, delivery);
+        if(chequearPuntuacion(puntuacion))
+          guardarPuntuacion(puntuacion);
         ReiniciarMonitor(encargado->monitorComandas);
         ReiniciarMonitor(delivery->monitorPedidos);
         break;
@@ -179,13 +187,11 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
     case '3':
         terminar = 0;
         salir();
-        if (encargado->memoria != NULL) {
-          int error = munmap((void*)(encargado->memoria), 2 * sizeof(Memoria));
-          if (error) {
-            perror("encargado_munmap()");
-          }
-        }
         system("clear");
+        break;
+    case '4':
+        system("clear");
+        guardarPuntuacion(10);
         break;
     default:
       break;
@@ -194,7 +200,7 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
 }
 
 void mostrarMenu() {
-  // system("clear");
+  system("clear");
   printf("|-------------------------------------------------------------------|\n");
   printf("|--------------------     PIZZERIA      ----------------------------|\n");
   printf("|                                                                   |\n");
@@ -617,11 +623,56 @@ void borrarSemMem(Encargado * enc, int ubiMemoria) {
   }
 }
 
-void verPuntuacion(){
+/*-------------------FUNCIONES DE LA PUNTUACION---------------------------*/
 
+int  chequearPuntuacion(int score) {
+  return 1;
+}
+
+void guardarPuntuacion(int score) {
+  FILE * archivoPuntuacion;
+  archivoPuntuacion = fopen("./puntuacion.txt", "a");
+  if(archivoPuntuacion == NULL)
+    perror("fopen()");
+  
+  fflush(stdin);
+  printf("Escriba su nombre: ");
+  char * nombre = (char*)(calloc(20,sizeof(char)));
+  scanf("%s", nombre);
+  fflush(stdin);
+
+  fprintf(archivoPuntuacion,"%s: %d\n", nombre, score);
+  fflush(archivoPuntuacion);
+
+  free(nombre);
+  int error = fclose(archivoPuntuacion);
+  if(error)
+    perror("fclose()");
+}
+
+void verPuntuacion(){
+  FILE * archivoPuntuacion;
+  archivoPuntuacion = fopen("./puntuacion.txt", "r");
+  if(archivoPuntuacion == NULL)
+    perror("fopen()");
+  
+  char * nombre = (char*)(calloc(20,sizeof(char)));
+  int  * score  = (int *)(calloc(1,sizeof(int)));;
+
+  while(feof(archivoPuntuacion) == 0) {
+    fscanf(archivoPuntuacion, "%s %d", nombre, score);
+    printf("%s %d\n", nombre, *score);
+  }
+  fflush(archivoPuntuacion);
+
+  free(nombre);
+  free(score);
+
+  int error = fclose(archivoPuntuacion);
+  if(error)
+    perror("fclose()");
 }
 
 void salir(){
 
 }
-
