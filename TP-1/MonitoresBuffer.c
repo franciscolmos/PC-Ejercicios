@@ -32,14 +32,24 @@ struct Monitor_t* CrearMonitor (int tamano) {
     error += pthread_mutex_init(&aux->mutexLectura, NULL);
     if (error)
       perror("pthread_mutex_init()");
-
-    pthread_cond_broadcast(&aux->condEscritura);
-    pthread_cond_broadcast(&aux->condLectura);
-    pthread_mutex_unlock(&aux->mutexEscritura);
-    pthread_mutex_unlock(&aux->mutexLectura);
   }
 
+  pthread_cond_broadcast(&aux->condEscritura);
+  pthread_cond_broadcast(&aux->condLectura);
+  pthread_mutex_unlock(&aux->mutexEscritura);
+  pthread_mutex_unlock(&aux->mutexLectura);
+
   return aux;
+}
+
+void ReiniciarMonitor (struct Monitor_t * m) {
+  m->inicio = 0;
+  m->fin = 0;
+  m->estadoBuffer = 0;
+  pthread_cond_broadcast(&m->condEscritura);
+  pthread_cond_broadcast(&m->condLectura);
+  pthread_mutex_unlock(&m->mutexEscritura);
+  pthread_mutex_unlock(&m->mutexLectura);
 }
 
 int GuardarDato (struct Monitor_t *m, int dato) {

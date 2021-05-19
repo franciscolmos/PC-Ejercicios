@@ -10,10 +10,11 @@ struct Monitor_t {
   pthread_mutex_t mutexEscritura, mutexLectura;
 };
 
-struct Monitor_t* CrearMonitor  (int tamano);
-int        GuardarDato   (struct Monitor_t *m, int dato);
-int        LeerDato      (struct Monitor_t *m, int *dato);
-void       BorrarMonitor (struct Monitor_t *m);
-void       VerPedidos    (struct Monitor_t *m);
+struct Monitor_t* CrearMonitor          (int tamano);
+void              ReiniciarMonitor      (struct Monitor_t *m);
+int               GuardarDato           (struct Monitor_t *m, int dato);
+int               LeerDato              (struct Monitor_t *m, int *dato);
+void              BorrarMonitor         (struct Monitor_t *m);
+void              VerPedidos            (struct Monitor_t *m);
 
 #endif

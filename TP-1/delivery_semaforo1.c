@@ -48,7 +48,7 @@ typedef struct{
 typedef struct{
   Telefono * telefono;
   struct Monitor_t *monitorComandas;
-  int ultimoPedido;
+  // int ultimoPedido;
   int ubiMemoria;
   Memoria * memoria;
 }Encargado;
@@ -94,7 +94,7 @@ void TimeOut();
 //Funciones de encargado
 void atenderPedido(Encargado *);
 void cargandoPedido(Encargado *, int);
-void cobrarPedido(Encargado *);
+void cobrarPedido(Encargado *, int *);
 
 //Funciones de cocinero
 void * gestionCocinero(void *);
@@ -152,7 +152,7 @@ int main(){
 
  // Menu
 void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Delivery * delivery) {
-  int terminar = 0;
+  int terminar = 1;
   char eleccion;
   do
   {
@@ -167,17 +167,24 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
     {
     case '1':
         system("clear");
-        terminar = 1;
+        // terminar = 0;
         comenzarJuego(telefono, encargado, cocinero, delivery);
+        ReiniciarMonitor(encargado->monitorComandas);
+        ReiniciarMonitor(delivery->monitorPedidos);
         break;
     case '2':
         system("clear");
-        terminar = 1;
         verPuntuacion();
         break;
     case '3':
         terminar = 0;
         salir();
+        if (encargado->memoria != NULL) {
+          int error = munmap((void*)(encargado->memoria), 2 * sizeof(Memoria));
+          if (error) {
+            perror("encargado_munmap()");
+          }
+        }
         system("clear");
         break;
     default:
@@ -187,7 +194,7 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
 }
 
 void mostrarMenu() {
-  system("clear");
+  // system("clear");
   printf("|-------------------------------------------------------------------|\n");
   printf("|--------------------     PIZZERIA      ----------------------------|\n");
   printf("|                                                                   |\n");
@@ -215,12 +222,14 @@ void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocine
 
   // Gestion Encargado
   encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
-  while(encargado->ultimoPedido != -1){
+  int * terminado = (int *)(calloc(1, sizeof(int)));
+  while(* terminado != -1){
     atenderPedido(encargado);
-    cobrarPedido(encargado);
+    cobrarPedido(encargado, terminado);
   }
+  free(terminado);
 
-  // Desmapeo la memoria del encargado
+  //Desmapeo la memoria del encargado
   if (encargado->memoria != NULL) {
     int error = munmap((void*)(encargado->memoria), 2 * sizeof(Memoria));
     if (error) {
@@ -238,38 +247,6 @@ void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocine
   for(int i = 0; i < DELIVERIES; i++) {
     pthread_join(hilosDeliveries[i], NULL);
   }
-}
-
-// Hilo telefono
-void * gestionTelefono(void * tmp){
-  timeout = 1;
-  Telefono *telefono = (Telefono *) tmp;
-
-  // Seteamos la alarma del juego e iniciamos el contador
-  signal(SIGALRM, TimeOut);
-  alarm(ALARMA);
-
-  while(timeout) {
-    sem_wait(telefono->semaforoTelefono);
-    usleep(rand()% 750001 + 250000);
-
-    telefono->pedido = rand() % CARTA;
-    printf("\ttelefono sonando\n");
-
-    sem_post(telefono->semaforoLlamadas);
-  }
-
-  // Envia el último pedido
-  telefono->pedido= -1;
-  printf("\tDueño llamando para cerrar local\n");
-  sem_post(telefono->semaforoLlamadas);
-
-  // Termina el hilo
-  pthread_exit(NULL);
-}
-
-void TimeOut() {
-  timeout = 0;
 }
 
 // Hilo Encargado
@@ -305,7 +282,7 @@ void cargandoPedido (Encargado * encargado, int codigoPedido) {
     perror("GuardarDato()");
 }
 
-void cobrarPedido(Encargado * encargado){
+void cobrarPedido(Encargado * encargado, int * terminado){
   int cobrosPendientes = 0;
 
   // Se fija si hay algun delivery esperando para que le cobre
@@ -318,10 +295,43 @@ void cobrarPedido(Encargado * encargado){
     }
     else {
       printf("\t\tCerrando local\n");
-      encargado->ultimoPedido = -1;
+      * terminado = -1;
     }
     sem_trywait(encargado->memoria->semaforoPedidosPorCobrar);
   }
+}
+
+// Hilo telefono
+void * gestionTelefono(void * tmp){
+  timeout = 1;
+  Telefono *telefono = (Telefono *) tmp;
+
+  // Seteamos la alarma del juego e iniciamos el contador
+  signal(SIGALRM, TimeOut);
+  alarm(ALARMA);
+
+  while(timeout) {
+    sem_wait(telefono->semaforoTelefono);
+    usleep(rand()% 750001 + 250000);
+
+    telefono->pedido = rand() % CARTA;
+    printf("\ttelefono sonando\n");
+
+    sem_post(telefono->semaforoLlamadas);
+  }
+
+  // Envia el último pedido
+  sem_wait(telefono->semaforoTelefono);
+  telefono->pedido= -1;
+  printf("\tDueño llamando para cerrar local\n");
+  sem_post(telefono->semaforoLlamadas);
+
+  // Termina el hilo
+  pthread_exit(NULL);
+}
+
+void TimeOut() {
+  timeout = 0;
 }
 
 // Hilo Cocinero
@@ -331,6 +341,7 @@ void * gestionCocinero(void * tmp) {
   while(*terminado != -1) {
     cocinarPedido(cocinero, terminado);
   }
+  free(terminado);
   pthread_exit(NULL);
 }
 
@@ -384,8 +395,9 @@ void * gestionDelivery(void * tmp){
     delivery->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, delivery->ubiMemoria, 0);
 
   // El Delivery trabaja
-  while(*terminado != -1)
+  while(*terminado != -1){
     repartirPedido(delivery, terminado);
+  }
 
   // Desmapeo la memoria, si es el ultimo delivery
   if(delivery->cantDeliveries == 0){
@@ -395,6 +407,8 @@ void * gestionDelivery(void * tmp){
           perror("delivery_munmap()");
       }
   }
+
+  free(terminado);
 
   // Termino el hilo
   pthread_exit(NULL);
