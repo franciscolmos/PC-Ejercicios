@@ -80,9 +80,8 @@ int crearMemoria();
 void llenarMemoria(int);
 
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
-void menu(Telefono *, Encargado *, Cocinero *, Delivery *);
 void mostrarMenu();
-void comenzarJuego(Telefono *, Encargado *, Cocinero *, Delivery *);
+void comenzarJuego();
 //int comenzarJuego(Telefono *, Encargado *, Cocinero *, Delivery *); La idea es que devuelva el score
 int  chequearPuntuacion(int); // Aca chequea si el score entra en el top 10
 void guardarPuntuacion(int);  // Lo guarda
@@ -121,40 +120,7 @@ void borrarSemMem(Encargado *, int);
 int main(){
   srand(time(NULL));
 
-  // Creamos los monitores
-  struct Monitor_t * monitorComandas = CrearMonitor(BUFFERCOMANDAS);
-  struct Monitor_t * monitorPedidos = CrearMonitor(BUFFERPEDIDOS);
-
-  // Creamos la memoria y traemos su ubiacion
-  int memoria =  crearMemoria();
-
-  // Se crean los actores del juego
-  Telefono * telefono = crearTelefono();
-  Encargado * encargado = crearEncargado(telefono, monitorComandas, memoria);
-  Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
-  Delivery * delivery = crearDelivery(monitorPedidos, memoria);
-
   // Interfaz de usuario
-  menu(telefono, encargado, cocinero, delivery);
-
-  // Se liberan los semaforos
-  borrarSemMem(encargado, memoria);
-
-  // Borramos los monitores
-  BorrarMonitor(monitorComandas);
-  BorrarMonitor(monitorPedidos);
-
-  // Se libera la memoria de los objetos creados
-  free(telefono);
-  free(encargado);
-  free(cocinero);
-  free(delivery);
-
-  return 0;
-}
-
- // Menu
-void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Delivery * delivery) {
   int terminar = 1;
   char eleccion;
   do
@@ -163,10 +129,10 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
 
     do{
       eleccion = getch();
-      if(eleccion != '1' && eleccion != '2' && eleccion != '3' && eleccion != '4') {
+      if(eleccion != '1' && eleccion != '2' && eleccion != '3') {
         printf("\nOpcion invalida, por favor seleccion 1 2 o 3\nIngrese una opcion: ");
       }
-    }while(eleccion != '1' && eleccion != '2' && eleccion != '3' && eleccion != '4' );
+    }while(eleccion != '1' && eleccion != '2' && eleccion != '3');
 
     switch (eleccion)
     {
@@ -174,11 +140,9 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
         system("clear");
         // terminar = 0;
         int puntuacion = 0;
-        comenzarJuego(telefono, encargado, cocinero, delivery);
+        comenzarJuego();
         if(chequearPuntuacion(puntuacion))
           guardarPuntuacion(puntuacion);
-        ReiniciarMonitor(encargado->monitorComandas);
-        ReiniciarMonitor(delivery->monitorPedidos);
         break;
     case '2':
         system("clear");
@@ -197,6 +161,8 @@ void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Deliv
       break;
     }
   } while (terminar);
+
+  return 0;
 }
 
 void mostrarMenu() {
@@ -211,7 +177,20 @@ void mostrarMenu() {
   printf("Ingrese una opcion: ");
 }
 
-void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Delivery * delivery){
+void comenzarJuego(){
+  // Creamos los monitores
+  struct Monitor_t * monitorComandas = CrearMonitor(BUFFERCOMANDAS);
+  struct Monitor_t * monitorPedidos = CrearMonitor(BUFFERPEDIDOS);
+
+  // Creamos la memoria y traemos su ubiacion
+  int memoria =  crearMemoria();
+
+  // Se crean los actores del juego
+  Telefono * telefono = crearTelefono();
+  Encargado * encargado = crearEncargado(telefono, monitorComandas, memoria);
+  Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
+  Delivery * delivery = crearDelivery(monitorPedidos, memoria);
+
   // Se instancian las variables hilos de cada objeto
   pthread_t hiloTelefono;
   pthread_t hilosCocineros[COCINEROS];
@@ -234,8 +213,6 @@ void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocine
     cobrarPedido(encargado, terminado);
   }
   free(terminado);
-  // Termino el hilo
-  printf("\nHilo encargado terminado\n");
 
   //Desmapeo la memoria del encargado
   if (encargado->memoria != NULL) {
@@ -255,6 +232,19 @@ void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocine
   for(int i = 0; i < DELIVERIES; i++) {
     pthread_join(hilosDeliveries[i], NULL);
   }
+
+  // Se liberan los semaforos
+  borrarSemMem(encargado, memoria);
+
+  // Borramos los monitores
+  BorrarMonitor(monitorComandas);
+  BorrarMonitor(monitorPedidos);
+
+  // Se libera la memoria de los objetos creados
+  free(telefono);
+  free(encargado);
+  free(cocinero);
+  free(delivery);
 }
 
 // Hilo Encargado
@@ -334,7 +324,6 @@ void * gestionTelefono(void * tmp){
   printf("\tDueño llamando para cerrar local\n");
   sem_post(telefono->semaforoLlamadas);
 
-  printf("\nHilo telefono terminado\n");
   // Termina el hilo
   pthread_exit(NULL);
 }
@@ -351,7 +340,6 @@ void * gestionCocinero(void * tmp) {
     cocinarPedido(cocinero, terminado);
   }
   free(terminado);
-  printf("\nHilo cocinero terminado\n");
   // Termino el hilo
   pthread_exit(NULL);
 }
@@ -421,7 +409,6 @@ void * gestionDelivery(void * tmp){
 
   free(terminado);
 
-  printf("\nHilo delivery terminado\n");
   // Termino el hilo
   pthread_exit(NULL);
 }
@@ -635,11 +622,9 @@ void guardarPuntuacion(int score) {
   if(archivoPuntuacion == NULL)
     perror("fopen()");
   
-  fflush(stdin);
   printf("Escriba su nombre: ");
   char * nombre = (char*)(calloc(20,sizeof(char)));
   scanf("%s", nombre);
-  fflush(stdin);
 
   fprintf(archivoPuntuacion,"%s: %d\n", nombre, score);
   fflush(archivoPuntuacion);
@@ -659,11 +644,13 @@ void verPuntuacion(){
   char * nombre = (char*)(calloc(20,sizeof(char)));
   int  * score  = (int *)(calloc(1,sizeof(int)));;
 
-  while(feof(archivoPuntuacion) == 0) {
-    fscanf(archivoPuntuacion, "%s %d", nombre, score);
+  int leido = fscanf(archivoPuntuacion, "%s %d", nombre, score);
+  while(leido != EOF) {
+    leido = fscanf(archivoPuntuacion, "%s %d", nombre, score);
     printf("%s %d\n", nombre, *score);
   }
-  fflush(archivoPuntuacion);
+
+  int temp = getchar();
 
   free(nombre);
   free(score);
