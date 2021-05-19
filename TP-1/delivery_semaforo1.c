@@ -9,11 +9,14 @@
 #include <sys/mman.h>
 
 #include "MonitoresBuffer.h"
+#include "conio.h"
 
 // Cantidad de actores
 #define ENCARGADOS 1
 #define COCINEROS 3
 #define DELIVERIES 2
+#define BUFFERCOMANDAS 4
+#define BUFFERPEDIDOS 4
 
 // Datos de entrada
 #define CARTA 5
@@ -77,8 +80,11 @@ int crearMemoria();
 void llenarMemoria(int);
 
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
-void menu(Encargado *);
+void menu(Telefono *, Encargado *, Cocinero *, Delivery *);
 void mostrarMenu();
+void comenzarJuego(Telefono *, Encargado *, Cocinero *, Delivery *);
+void verPuntuacion();
+void salir();
 
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 //Funciones de telefono
@@ -104,7 +110,7 @@ void avisarCobro(Delivery *, int);
 
 /*-------------------FUNCIONES DE LIBREACION DE MEMORIA-----------------------*/
 // Borrado de semaforos y memoria
-void borrarSemMem(Encargado *);
+void borrarSemMem(Encargado *, int);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
@@ -113,8 +119,8 @@ int main(){
   srand(time(NULL));
 
   // Creamos los monitores
-  struct Monitor_t * monitorComandas = CrearMonitor(4);
-  struct Monitor_t * monitorPedidos = CrearMonitor(4);
+  struct Monitor_t * monitorComandas = CrearMonitor(BUFFERCOMANDAS);
+  struct Monitor_t * monitorPedidos = CrearMonitor(BUFFERPEDIDOS);
 
   // Creamos la memoria y traemos su ubiacion
   int memoria =  crearMemoria();
@@ -125,6 +131,74 @@ int main(){
   Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
   Delivery * delivery = crearDelivery(monitorPedidos, memoria);
 
+  // Interfaz de usuario
+  menu(telefono, encargado, cocinero, delivery);
+
+  // Se liberan los semaforos
+  borrarSemMem(encargado, memoria);
+
+  // Borramos los monitores
+  BorrarMonitor(monitorComandas);
+  BorrarMonitor(monitorPedidos);
+
+  // Se libera la memoria de los objetos creados
+  free(telefono);
+  free(encargado);
+  free(cocinero);
+  free(delivery);
+
+  return 0;
+}
+
+ // Menu
+void menu(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Delivery * delivery) {
+  int terminar = 0;
+  char eleccion;
+  do
+  {
+    mostrarMenu();
+    do{
+      eleccion = getch();
+      if(eleccion != '1' && eleccion != '2' && eleccion != '3'){
+        printf("\nOpcion invalida, por favor seleccion 1 2 o 3\nIngrese una opcion: ");
+      }
+    }while(eleccion != '1' && eleccion != '2' && eleccion != '3' );
+    switch (eleccion)
+    {
+    case '1':
+        system("clear");
+        terminar = 1;
+        comenzarJuego(telefono, encargado, cocinero, delivery);
+        break;
+    case '2':
+        system("clear");
+        terminar = 1;
+        verPuntuacion();
+        break;
+    case '3':
+        terminar = 0;
+        salir();
+        system("clear");
+        break;
+    default:
+      break;
+    }
+  } while (terminar);
+}
+
+void mostrarMenu() {
+  system("clear");
+  printf("|-------------------------------------------------------------------|\n");
+  printf("|--------------------     PIZZERIA      ----------------------------|\n");
+  printf("|                                                                   |\n");
+  printf("| 1. Comenzar juego.                                                |\n");
+  printf("| 2. Ver puntuacion.                                                |\n");
+  printf("| 3. Salir.                                                         |\n");
+  printf("|-------------------------------------------------------------------|\n");
+  printf("Ingrese una opcion: ");
+}
+
+void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocinero, Delivery * delivery){
   // Se instancian las variables hilos de cada objeto
   pthread_t hiloTelefono;
   pthread_t hilosCocineros[COCINEROS];
@@ -140,10 +214,18 @@ int main(){
   }
 
   // Gestion Encargado
-  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, memoria, 0);
+  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
   while(encargado->ultimoPedido != -1){
     atenderPedido(encargado);
     cobrarPedido(encargado);
+  }
+
+  // Desmapeo la memoria del encargado
+  if (encargado->memoria != NULL) {
+    int error = munmap((void*)(encargado->memoria), 2 * sizeof(Memoria));
+    if (error) {
+      perror("encargado_munmap()");
+    }
   }
 
   // HACE FALTA ESPERAR QUE TERMINEN LOS HILOS? SE SUPONE QUE EL
@@ -156,55 +238,11 @@ int main(){
   for(int i = 0; i < DELIVERIES; i++) {
     pthread_join(hilosDeliveries[i], NULL);
   }
-
-  // Se liberan los semaforos
-  borrarSemMem(encargado);
-
-  // Borramos los monitores
-  BorrarMonitor(monitorComandas);
-  BorrarMonitor(monitorPedidos);
-
-  // Se libera la memoria de los objetos creados
-  free(telefono);
-  free(encargado);
-  free(cocinero);
-  free(delivery);
-
-  return 0;
 }
-
-// // Menu
-// void menu(Encargado * encargado) {
-//   encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
-//   int terminar = 0;
-//   char eleccion;
-//   do
-//   {
-//     mostrarMenu();
-//     scanf(eleccion);
-//   } while (terminar);
-  
-//   // while(encargado->ultimoPedido != -1){
-//   //   atenderPedido(encargado);
-//   //   cobrarPedido(encargado);
-//   // }
-// }
-
-// void mostrarMenu() {
-//   char temp;
-//   printf("|-------------------------------------------------------------------|");
-//   printf("|--------------------     PIZZERIA      ----------------------------|");
-//   printf("|                                                                   |");
-//   printf("| 1. Comenzar juego.                                                |");
-//   printf("| 2. Ver puntuacion.                                                |");
-//   printf("| 3. Salir.                                                         |");
-//   printf("|-------------------------------------------------------------------|");
-//   printf("Ingrese una opcion: ");
-//   scanf(temp);
-// }
 
 // Hilo telefono
 void * gestionTelefono(void * tmp){
+  timeout = 1;
   Telefono *telefono = (Telefono *) tmp;
 
   // Seteamos la alarma del juego e iniciamos el contador
@@ -489,7 +527,8 @@ void llenarMemoria(int ubicacion) {
 /*-----------------FUNCIONES DE LIBERACION DE MEMORIA---------------------*/
 
 // Borrado de semaforos y memoria
-void borrarSemMem(Encargado * enc) {
+void borrarSemMem(Encargado * enc, int ubiMemoria) {
+  Memoria * temp = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, ubiMemoria, 0);
   int status=0;
   // Semaforo Telefono
   status = sem_close(enc->telefono->semaforoTelefono);
@@ -512,7 +551,7 @@ void borrarSemMem(Encargado * enc) {
     perror("sem_close()");
 
   // Semaforo PedidosPorCobrar
-  status = sem_close(enc->memoria->semaforoPedidosPorCobrar);
+  status = sem_close(temp->semaforoPedidosPorCobrar);
   if (!status) {
     status = sem_unlink("/semPedidosPorCobrar");
     if (status)
@@ -522,7 +561,7 @@ void borrarSemMem(Encargado * enc) {
     perror("sem_close()");
 
   // Semaforo DejarDinero
-  status = sem_close(enc->memoria->semaforoDejarDinero);
+  status = sem_close(temp->semaforoDejarDinero);
   if (!status) {
     status = sem_unlink("/semDejarDinero");
     if (status)
@@ -531,8 +570,8 @@ void borrarSemMem(Encargado * enc) {
   else
     perror("sem_close()");
 
-  // Semaforo TomarDinero
-  status = sem_close(enc->memoria->semaforoCobrarDinero);
+  // Semaforo CobrarDinero
+  status = sem_close(temp->semaforoCobrarDinero);
   if (!status) {
     status = sem_unlink("/semCobrarDinero");
     if (status)
@@ -542,18 +581,27 @@ void borrarSemMem(Encargado * enc) {
     perror("sem_close()");
 
   // Desmapeo la memoria
-  if (enc->memoria != NULL) {
-    int error = munmap((void*)(enc->memoria), 2 * sizeof(Memoria));
+  if (temp != NULL) {
+    int error = munmap((void*)(temp), 2 * sizeof(Memoria));
     if (error) {
-      perror("encargado_munmap()");
+      perror("temp_munmap()");
     }
   }
 
   // Memoria Compartida
-  if (enc->ubiMemoria > 0) {
+  if (ubiMemoria > 0) {
     status = shm_unlink("/memCompartida");
     if (status) {
       perror("unlink()");
     }
   }
 }
+
+void verPuntuacion(){
+
+}
+
+void salir(){
+
+}
+
