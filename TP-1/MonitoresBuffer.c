@@ -46,6 +46,9 @@ void ReiniciarMonitor (struct Monitor_t * m) {
   m->inicio = 0;
   m->fin = 0;
   m->estadoBuffer = 0;
+  for(int i = 0; i < m->size; i++){
+    m->dato[i] = 0;
+  }
   pthread_cond_broadcast(&m->condEscritura);
   pthread_cond_broadcast(&m->condLectura);
   pthread_mutex_unlock(&m->mutexEscritura);
@@ -112,7 +115,7 @@ int LeerDato (struct Monitor_t *m, int *dato) {
     perror("pthread_mutex_unlock()");
 
   return error;
- }
+}
 
 void VerPedidos (struct Monitor_t *m) {
   for(int i=0; i<m->size; i++) {

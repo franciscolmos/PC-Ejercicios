@@ -228,6 +228,8 @@ void comenzarJuego(Telefono * telefono, Encargado * encargado, Cocinero * cocine
     cobrarPedido(encargado, terminado);
   }
   free(terminado);
+  // Termino el hilo
+  printf("\nHilo encargado terminado\n");
 
   //Desmapeo la memoria del encargado
   if (encargado->memoria != NULL) {
@@ -326,6 +328,7 @@ void * gestionTelefono(void * tmp){
   printf("\tDueño llamando para cerrar local\n");
   sem_post(telefono->semaforoLlamadas);
 
+  printf("\nHilo telefono terminado\n");
   // Termina el hilo
   pthread_exit(NULL);
 }
@@ -342,6 +345,8 @@ void * gestionCocinero(void * tmp) {
     cocinarPedido(cocinero, terminado);
   }
   free(terminado);
+  printf("\nHilo cocinero terminado\n");
+  // Termino el hilo
   pthread_exit(NULL);
 }
 
@@ -410,6 +415,7 @@ void * gestionDelivery(void * tmp){
 
   free(terminado);
 
+  printf("\nHilo delivery terminado\n");
   // Termino el hilo
   pthread_exit(NULL);
 }
