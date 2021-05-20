@@ -12,23 +12,16 @@
 #include "conio.h"
 
 // colores
-#define RESET_COLOR    "\x1b[0m"
-#define NEGRO_T        "\x1b[30m"
-#define NEGRO_F        "\x1b[40m"
-#define ROJO_T     "\x1b[31m"
-#define ROJO_F     "\x1b[41m"
-#define VERDE_T        "\x1b[32m"
-#define VERDE_F        "\x1b[42m"
-#define AMARILLO_T "\x1b[33m"
-#define AMARILLO_F  "\x1b[43m"
-#define AZUL_T     "\x1b[34m"
-#define AZUL_F      "\x1b[44m"
-#define MAGENTA_T  "\x1b[35m"
-#define MAGENTA_F  "\x1b[45m"
-#define CYAN_T     "\x1b[36m"
-#define CYAN_F     "\x1b[46m"
-#define BLANCO_T   "\x1b[37m"
-#define BLANCO_F   "\x1b[47m"
+#define RESET_COLOR  "\x1b[0m"
+#define NEGRO_T      "\x1b[30m"
+#define ROJO_F       "\x1b[41m"
+#define VERDE_F      "\x1b[42m"
+#define AMARILLO_F   "\x1b[43m"
+#define MAGENTA_F    "\x1b[45m"
+#define CYAN_T       "\x1b[36m"
+#define CYAN_F       "\x1b[46m"
+#define BLANCO_T     "\x1b[37m"
+#define BLANCO_F     "\x1b[47m"
 
 // Cantidad de actores
 #define ENCARGADOS 1
@@ -186,20 +179,20 @@ int main(){
 
 void mostrarMenu() {
   system("clear");
-  printf("|------------------------------------|\n");
-  printf("|------------- PIZZERIA -------------|\n");
-  printf("|                                    |\n");
-  printf("|         1. Comenzar juego.         |\n");
-  printf("|         2. Ver puntuacion.         |\n");
-  printf("|         3. Salir.                  |\n");
-  printf("|                                    |\n");
-  printf("|************************************|\n");
-  printf("|             Como jugar             |\n");
-  printf("|                                    |\n");
-  printf("|         a: Atender telefono        |\n");
-  printf("|         s: Cobrar pedido           |\n");
-  printf("|                                    |\n");
-  printf("|------------------------------------|\n");
+  printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|-------------"BLANCO_T MAGENTA_F" PIZZERIA "NEGRO_T BLANCO_F"-------------|"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"1. Comenzar juego."NEGRO_T BLANCO_F"         |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"2. Ver puntuacion."NEGRO_T BLANCO_F"         |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"3. Salir."NEGRO_T BLANCO_F"                  |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|************************************|"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|             "BLANCO_T MAGENTA_F"Como jugar"NEGRO_T BLANCO_F"             |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"a: Atender telefono"NEGRO_T BLANCO_F"        |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"s: Cobrar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
   printf("Ingrese una opcion: ");
 }
 
