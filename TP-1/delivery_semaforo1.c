@@ -266,6 +266,7 @@ void atenderPedido(Encargado * encargado){
     int codigoPedido = encargado->telefono->pedido;
     printf("\t\ttelefono colgado\n");
     sem_post(encargado->telefono->semaforoTelefono);
+    printf("\t\t Pedido %d\n", codigoPedido);
 
     //Si el que sigue es el ultimo pedido, avisar a cada cocinero para que terminen
     if(codigoPedido == -1){
@@ -346,6 +347,8 @@ void * gestionTelefono(void * tmp){
   printf("\tDueño llamando para cerrar local\n");
   sem_post(telefono->semaforoLlamadas);
 
+  // printf("Telefono terminado\n");
+
   // Termina el hilo
   pthread_exit(NULL);
 }
@@ -362,11 +365,12 @@ void * gestionCocinero(void * tmp) {
     cocinarPedido(cocinero, terminado);
   }
   free(terminado);
+  // printf("Cocinero terminado\n");
   // Termino el hilo
   pthread_exit(NULL);
 }
 
-void  cocinarPedido(Cocinero * cocinero, int * terminado) {
+void cocinarPedido(Cocinero * cocinero, int * terminado) {
   int error = 0;
   int pedidoActual = 0;
   error = LeerDato(cocinero->monitorComandas, &pedidoActual);
@@ -398,7 +402,7 @@ void pedidoListo(Cocinero * cocinero, int pedidoListo){
   int error = 0;
 
   usleep(rand() % 100001 + 250000);
-  if( pedidoListo != -1)
+  // if( pedidoListo != -1)
     //printf("\t\t\tPedido %d listo para ser repartido\n", pedidoListo);
     
   error = GuardarDato(cocinero->monitorPedidos, pedidoListo);
@@ -430,7 +434,7 @@ void * gestionDelivery(void * tmp){
   }
 
   free(terminado);
-
+  // printf("Delivery terminado\n");
   // Termino el hilo
   pthread_exit(NULL);
 }
@@ -446,11 +450,12 @@ void repartirPedido(Delivery * delivery, int * terminado) {
     if( pedidoRepartir != -1) {
       //printf("\t\t\t\trepartiendo pedido %d\n", pedidoRepartir);
       usleep(rand()% 250001 + 350000);
-      //printf("\t\t\t\tpedido %d entregado\n", pedidoRepartir);
+      // printf("\t\t\t\tpedido %d entregado\n", pedidoRepartir);
       usleep(rand()% 250001 + 350000);
       avisarCobro(delivery, pedidoRepartir);
     }
     else {
+      // printf("\t\t\t\tDelivery recibe -1\n");
       delivery->cantDeliveries--;
       * terminado = -1;
     }
@@ -466,6 +471,7 @@ void avisarCobro(Delivery * delivery, int pedidoCobrar){
   if(pedidoCobrar != -1) {
     printf("\t\t\t\tdejando dinero de pedido %d\n", pedidoCobrar);
   }else{
+    sleep(1);
     printf("\t\t\t\tpresione s para cerrar el local\n");
   }
   sem_wait(delivery->memoria->semaforoDejarDinero);
