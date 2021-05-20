@@ -20,7 +20,7 @@
 
 // Datos de entrada
 #define CARTA 5
-#define ALARMA 5
+#define ALARMA 10
 
 // Dato que indica que el juego termino
 int timeout = 1;
@@ -42,6 +42,7 @@ typedef struct{
   sem_t * semaforoTelefono;
   sem_t * semaforoLlamadas;
   int pedido;
+  int * puntuacion;
 }Telefono;
 
 // ESTRUCTURA DEL ENCARGADO
@@ -70,7 +71,7 @@ typedef struct{
 
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // Actores
-Telefono * crearTelefono();
+Telefono * crearTelefono(int *);
 Encargado * crearEncargado(Telefono *, struct Monitor_t *, int);
 Cocinero * crearCocinero(struct Monitor_t *, struct Monitor_t *);
 Delivery * crearDelivery(struct Monitor_t *, int);
@@ -81,8 +82,8 @@ void llenarMemoria(int);
 
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
 void mostrarMenu();
-void comenzarJuego();
-//int comenzarJuego(Telefono *, Encargado *, Cocinero *, Delivery *); La idea es que devuelva el score
+int comenzarJuego();
+void jugar();
 int  chequearPuntuacion(int); // Aca chequea si el score entra en el top 10
 void guardarPuntuacion(int);  // Lo guarda
 void verPuntuacion();
@@ -139,8 +140,7 @@ int main(){
     case '1':
         system("clear");
         // terminar = 0;
-        int puntuacion = 0;
-        comenzarJuego();
+        int puntuacion = comenzarJuego();;
         if(chequearPuntuacion(puntuacion))
           guardarPuntuacion(puntuacion);
         break;
@@ -167,17 +167,26 @@ int main(){
 
 void mostrarMenu() {
   system("clear");
-  printf("|-------------------------------------------------------------------|\n");
-  printf("|--------------------     PIZZERIA      ----------------------------|\n");
-  printf("|                                                                   |\n");
-  printf("| 1. Comenzar juego.                                                |\n");
-  printf("| 2. Ver puntuacion.                                                |\n");
-  printf("| 3. Salir.                                                         |\n");
-  printf("|-------------------------------------------------------------------|\n");
+  printf("|------------------------------------|\n");
+  printf("|------------- PIZZERIA -------------|\n");
+  printf("|                                    |\n");
+  printf("|         1. Comenzar juego.         |\n");
+  printf("|         2. Ver puntuacion.         |\n");
+  printf("|         3. Salir.                  |\n");
+  printf("|                                    |\n");
+  printf("|************************************|\n");
+  printf("|             Como jugar             |\n");
+  printf("|                                    |\n");
+  printf("|         a: Atender telefono        |\n");
+  printf("|         s: Cobrar pedido           |\n");
+  printf("|                                    |\n");
+  printf("|------------------------------------|\n");
   printf("Ingrese una opcion: ");
 }
 
-void comenzarJuego(){
+int comenzarJuego(){
+  int puntuacion = 0;
+
   // Creamos los monitores
   struct Monitor_t * monitorComandas = CrearMonitor(BUFFERCOMANDAS);
   struct Monitor_t * monitorPedidos = CrearMonitor(BUFFERPEDIDOS);
@@ -186,7 +195,7 @@ void comenzarJuego(){
   int memoria =  crearMemoria();
 
   // Se crean los actores del juego
-  Telefono * telefono = crearTelefono();
+  Telefono * telefono = crearTelefono(&puntuacion);
   Encargado * encargado = crearEncargado(telefono, monitorComandas, memoria);
   Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
   Delivery * delivery = crearDelivery(monitorPedidos, memoria);
@@ -207,12 +216,9 @@ void comenzarJuego(){
 
   // Gestion Encargado
   encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
-  int * terminado = (int *)(calloc(1, sizeof(int)));
-  while(* terminado != -1){
-    atenderPedido(encargado);
-    cobrarPedido(encargado, terminado);
-  }
-  free(terminado);
+
+  // arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
+  jugar(encargado);
 
   //Desmapeo la memoria del encargado
   if (encargado->memoria != NULL) {
@@ -245,6 +251,8 @@ void comenzarJuego(){
   free(encargado);
   free(cocinero);
   free(delivery);
+
+  return puntuacion;
 }
 
 // Hilo Encargado
@@ -272,8 +280,8 @@ void cargandoPedido (Encargado * encargado, int codigoPedido) {
   int error=0;
 
   usleep(rand() % 100001 + 100000);
-  if( codigoPedido != -1)
-    printf("\t\tPedido %d de la carta cargado\n", codigoPedido);
+  /* if( codigoPedido != -1)
+    printf("\t\tPedido %d de la carta cargado\n", codigoPedido); */
 
   error = GuardarDato(encargado->monitorComandas, codigoPedido);
   if(error)
@@ -316,6 +324,20 @@ void * gestionTelefono(void * tmp){
     printf("\ttelefono sonando\n");
 
     sem_post(telefono->semaforoLlamadas);
+    sleep(1);
+    int telefonoSonando = 0;
+    sem_getvalue(telefono->semaforoLlamadas, &telefonoSonando);
+    if(telefonoSonando == 1){
+      int error = 0;
+      error = sem_trywait(telefono->semaforoLlamadas);
+      if(!error){
+        printf("\tSe perdio la llamada\n");
+        sem_post(telefono->semaforoTelefono);
+      }
+    }else{
+      *telefono->puntuacion = *telefono->puntuacion+1;
+      printf("puntuacion: %d\n", *telefono->puntuacion);
+    }
   }
 
   // Envia el último pedido
@@ -353,9 +375,9 @@ void  cocinarPedido(Cocinero * cocinero, int * terminado) {
   else {
     // Si el pedido actual es -1, entonces empieza a cerrar la cocina
     if( pedidoActual != -1) {
-      printf("\t\t\tcocinando pedido %d\n", pedidoActual);
+      //printf("\t\t\tcocinando pedido %d\n", pedidoActual);
       usleep(rand()% 500001 + 1000000);
-      printf("\t\t\tpedido %d cocinado\n", pedidoActual);
+      //printf("\t\t\tpedido %d cocinado\n", pedidoActual);
       pedidoListo(cocinero, pedidoActual);
     }
     else {
@@ -377,7 +399,7 @@ void pedidoListo(Cocinero * cocinero, int pedidoListo){
 
   usleep(rand() % 100001 + 250000);
   if( pedidoListo != -1)
-    printf("\t\t\tPedido %d listo para ser repartido\n", pedidoListo);
+    //printf("\t\t\tPedido %d listo para ser repartido\n", pedidoListo);
     
   error = GuardarDato(cocinero->monitorPedidos, pedidoListo);
   if(error)
@@ -422,9 +444,9 @@ void repartirPedido(Delivery * delivery, int * terminado) {
   else {
     // Si el pedido a repartir es -1, entonces termina su trabajo
     if( pedidoRepartir != -1) {
-      printf("\t\t\t\trepartiendo pedido %d\n", pedidoRepartir);
+      //printf("\t\t\t\trepartiendo pedido %d\n", pedidoRepartir);
       usleep(rand()% 250001 + 350000);
-      printf("\t\t\t\tpedido %d entregado\n", pedidoRepartir);
+      //printf("\t\t\t\tpedido %d entregado\n", pedidoRepartir);
       usleep(rand()% 250001 + 350000);
       avisarCobro(delivery, pedidoRepartir);
     }
@@ -441,10 +463,12 @@ void repartirPedido(Delivery * delivery, int * terminado) {
 
 void avisarCobro(Delivery * delivery, int pedidoCobrar){
   sem_post(delivery->memoria->semaforoPedidosPorCobrar);
-  sem_wait(delivery->memoria->semaforoDejarDinero);
   if(pedidoCobrar != -1) {
     printf("\t\t\t\tdejando dinero de pedido %d\n", pedidoCobrar);
+  }else{
+    printf("\t\t\t\tpresione s para cerrar el local\n");
   }
+  sem_wait(delivery->memoria->semaforoDejarDinero);
   usleep(100000);
   delivery->memoria->dato = pedidoCobrar;
   sem_post(delivery->memoria->semaforoCobrarDinero);
@@ -452,12 +476,13 @@ void avisarCobro(Delivery * delivery, int pedidoCobrar){
 
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // Creacion de Telefono
-Telefono * crearTelefono() {
+Telefono * crearTelefono(int * puntuacion) {
   Telefono * telefono = (Telefono *)(calloc(1, sizeof(Telefono)));
   telefono->semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
   telefono->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
   telefono->semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
   telefono->semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
+  telefono->puntuacion = puntuacion;
   return telefono;
 }
 
@@ -658,6 +683,28 @@ void verPuntuacion(){
   int error = fclose(archivoPuntuacion);
   if(error)
     perror("fclose()");
+}
+
+void jugar(Encargado * encargado){
+  int * terminado = (int *)(calloc(1, sizeof(int)));
+  char eleccion;
+  while(* terminado != -1){
+    do
+    {
+      eleccion = getchar();
+    } while (eleccion != 'a' && eleccion != 's' && eleccion != 'd');
+    switch (eleccion){
+    case 'a':
+      atenderPedido(encargado);
+      break;
+    case 's':
+      cobrarPedido(encargado, terminado);
+      break;
+    default:
+      break;
+    }
+  }
+  free(terminado);
 }
 
 void salir(){
