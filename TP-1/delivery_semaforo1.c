@@ -11,6 +11,25 @@
 #include "MonitoresBuffer.h"
 #include "conio.h"
 
+// colores
+#define RESET_COLOR    "\x1b[0m"
+#define NEGRO_T        "\x1b[30m"
+#define NEGRO_F        "\x1b[40m"
+#define ROJO_T     "\x1b[31m"
+#define ROJO_F     "\x1b[41m"
+#define VERDE_T        "\x1b[32m"
+#define VERDE_F        "\x1b[42m"
+#define AMARILLO_T "\x1b[33m"
+#define AMARILLO_F  "\x1b[43m"
+#define AZUL_T     "\x1b[34m"
+#define AZUL_F      "\x1b[44m"
+#define MAGENTA_T  "\x1b[35m"
+#define MAGENTA_F  "\x1b[45m"
+#define CYAN_T     "\x1b[36m"
+#define CYAN_F     "\x1b[46m"
+#define BLANCO_T   "\x1b[37m"
+#define BLANCO_F   "\x1b[47m"
+
 // Cantidad de actores
 #define ENCARGADOS 1
 #define COCINEROS 3
@@ -266,7 +285,6 @@ void atenderPedido(Encargado * encargado){
     int codigoPedido = encargado->telefono->pedido;
     printf("\t\ttelefono colgado\n");
     sem_post(encargado->telefono->semaforoTelefono);
-    printf("\t\t Pedido %d\n", codigoPedido);
 
     //Si el que sigue es el ultimo pedido, avisar a cada cocinero para que terminen
     if(codigoPedido == -1){
@@ -322,7 +340,7 @@ void * gestionTelefono(void * tmp){
     usleep(rand()% 750001 + 250000);
 
     telefono->pedido = rand() % CARTA;
-    printf("\ttelefono sonando\n");
+    printf(BLANCO_T ROJO_F"\ttelefono sonando"RESET_COLOR"\n");
 
     sem_post(telefono->semaforoLlamadas);
     sleep(1);
@@ -337,14 +355,13 @@ void * gestionTelefono(void * tmp){
       }
     }else{
       *telefono->puntuacion = *telefono->puntuacion+1;
-      printf("puntuacion: %d\n", *telefono->puntuacion);
     }
   }
 
   // Envia el último pedido
   sem_wait(telefono->semaforoTelefono);
   telefono->pedido= -1;
-  printf("\tDueño llamando para cerrar local\n");
+  printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
   sem_post(telefono->semaforoLlamadas);
 
   // printf("Telefono terminado\n");
@@ -469,10 +486,10 @@ void repartirPedido(Delivery * delivery, int * terminado) {
 void avisarCobro(Delivery * delivery, int pedidoCobrar){
   sem_post(delivery->memoria->semaforoPedidosPorCobrar);
   if(pedidoCobrar != -1) {
-    printf("\t\t\t\tdejando dinero de pedido %d\n", pedidoCobrar);
+    printf(NEGRO_T AMARILLO_F"\t\t\t\tdejando dinero de pedido %d"RESET_COLOR"\n", pedidoCobrar);
   }else{
     sleep(1);
-    printf("\t\t\t\tpresione s para cerrar el local\n");
+    printf(BLANCO_T VERDE_F"\t\t\t\tpresione s para cerrar el local"RESET_COLOR"\n");
   }
   sem_wait(delivery->memoria->semaforoDejarDinero);
   usleep(100000);
