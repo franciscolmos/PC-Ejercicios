@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdio_ext.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -9,7 +10,6 @@
 #include <sys/mman.h>
 
 #include "MonitoresBuffer.h"
-#include "conio.h"
 
 // COLORES
 #define RESET_COLOR  "\x1b[0m"
@@ -34,7 +34,8 @@
 
 int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 
-/*--------------------------------ESTRUCTURAS-------------------------------*/
+/*----------------------------------------------------------------------------*/
+/*---------------------------------ESTRUCTURAS--------------------------------*/
 // ESTRUCTURA DE LA MEMORIA
 typedef struct {
   sem_t * semaforoPedidosPorCobrar;
@@ -75,6 +76,7 @@ typedef struct {
   Memoria * memoria;
 }Delivery;
 
+/*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // ACTORES
 Telefono * crearTelefono(int *);
@@ -86,6 +88,7 @@ Delivery * crearDelivery(struct Monitor_t *, int);
 int crearMemoria();
 void llenarMemoria(int);
 
+/*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
 void mostrarMenu();
 int comenzarJuego();
@@ -94,6 +97,7 @@ void guardarPuntuacion(int);
 void verPuntuacion();
 void salir(int *);
 
+/*----------------------------------------------------------------------------*/
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 // FUNCIONES DEL TELEFONO
 void * gestionTelefono( void *);
@@ -117,13 +121,13 @@ void repartirPedido(Delivery *, int *);
 void avisarCobro(Delivery *, int);
 
 
+/*----------------------------------------------------------------------------*/
 /*-------------------FUNCIONES DE LIBREACION DE MEMORIA-----------------------*/
 // BORRADO DE SEMAFOROS Y MEMORIA
 void borrarSemMem(Encargado *, int);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
-
 int main(){
   srand(time(NULL));
 
@@ -134,11 +138,12 @@ int main(){
     mostrarMenu(); // INTERFAZ DE USUARIO
 
     do{
-      eleccion = getch();
+      eleccion = getchar();
       if(eleccion != '1' && eleccion != '2' && eleccion != '3') {
         printf("\nOpcion invalida, por favor seleccion 1 2 o 3\nIngrese una opcion: ");
       }
     }while(eleccion != '1' && eleccion != '2' && eleccion != '3');
+    __fpurge(stdin);
 
     switch (eleccion)
     {
@@ -183,6 +188,7 @@ void mostrarMenu() {
 }
 
 int comenzarJuego(){
+  timeout = 1;
   int puntuacion = 0; // Guarda la puntuacion del juego
 
   // Creamos los monitores
@@ -306,7 +312,6 @@ void cobrarPedido(Encargado * encargado, int * terminado) {
   int cobrosPendientes = 0;
   // Se fija si hay algun delivery esperando para que le cobre
   int error = sem_getvalue(encargado->memoria->semaforoPedidosPorCobrar, &cobrosPendientes);
-  printf("Cantidad de cobros pendientes: %d\n", cobrosPendientes);
   if(!error) {
     if(cobrosPendientes > 0){
       sem_post(encargado->memoria->semaforoDejarDinero);
@@ -500,7 +505,7 @@ void avisarCobro(Delivery * delivery, int pedidoCobrar){
   sem_post(delivery->memoria->semaforoCobrarDinero);
 }
 
-/*------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // Creacion de Telefono
 Telefono * crearTelefono(int * puntuacion) {
@@ -591,8 +596,8 @@ void llenarMemoria(int ubicacion) {
   }
 }
 
-/*------------------------------------------------------------------------*/
-/*-----------------FUNCIONES DE LIBERACION DE MEMORIA---------------------*/
+/*----------------------------------------------------------------------------*/
+/*--------------------FUNCIONES DE LIBERACION DE MEMORIA----------------------*/
 
 // Borrado de semaforos y memoria
 void borrarSemMem(Encargado * enc, int ubiMemoria) {
@@ -665,8 +670,8 @@ void borrarSemMem(Encargado * enc, int ubiMemoria) {
   }
 }
 
-/*------------------------------------------------------------------------*/
-/*-------------------FUNCIONES DE LA PUNTUACION---------------------------*/
+/*----------------------------------------------------------------------------*/
+/*-----------------------FUNCIONES DE LA PUNTUACION---------------------------*/
 
 int  chequearPuntuacion(int score) {
   return 1;
@@ -681,6 +686,7 @@ void guardarPuntuacion(int score) {
   printf("Escriba su nombre: ");
   char * nombre = (char*)(calloc(20,sizeof(char)));
   scanf("%s", nombre);
+  __fpurge(stdin);
 
   fprintf(archivoPuntuacion,"%s: %d\n", nombre, score);
   fflush(archivoPuntuacion);
@@ -707,6 +713,8 @@ void verPuntuacion(){
   }
 
   int temp = getchar();
+  if(temp){}
+  __fpurge(stdin);
 
   free(nombre);
   free(score);

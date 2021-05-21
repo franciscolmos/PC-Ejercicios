@@ -1,1 +1,3 @@
 Felipe: 7
+Francisco: 3
+Matias: 4

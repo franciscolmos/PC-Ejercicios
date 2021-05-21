@@ -39,8 +39,6 @@ struct Monitor_t* CrearMonitor (int tamano) {
   pthread_mutex_unlock(&aux->mutexEscritura);
   pthread_mutex_unlock(&aux->mutexLectura);
 
-  VerPedidos(aux);
-
   return aux;
 }
 

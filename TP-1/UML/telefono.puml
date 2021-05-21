@@ -4,5 +4,5 @@
     Llamando --> EnLlamada: telefonoAtendido()
     Llamando --> EsperaDePedido: llamadaPerdida()
     EnLlamada --> EsperaDePedido : pedidoCargado()
-    EnLlamada --> [*] : ultimoPedidoCargado()
+    EnLlamada --> [*] : Timeout()
 @endumlx
