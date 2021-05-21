@@ -2,6 +2,7 @@
     [*] --> EsperaDePedido
     EsperaDePedido --> Llamando : sonando()
     Llamando --> EnLlamada: telefonoAtendido()
+    Llamando --> EsperaDePedido: llamadaPerdida()
     EnLlamada --> EsperaDePedido : pedidoCargado()
     EnLlamada --> [*] : ultimoPedidoCargado()
 @endumlx

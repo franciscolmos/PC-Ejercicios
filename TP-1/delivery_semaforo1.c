@@ -11,15 +11,13 @@
 #include "MonitoresBuffer.h"
 #include "conio.h"
 
-// colores
+// COLORES
 #define RESET_COLOR  "\x1b[0m"
 #define NEGRO_T      "\x1b[30m"
 #define ROJO_F       "\x1b[41m"
 #define VERDE_F      "\x1b[42m"
 #define AMARILLO_F   "\x1b[43m"
 #define MAGENTA_F    "\x1b[45m"
-#define CYAN_T       "\x1b[36m"
-#define CYAN_F       "\x1b[46m"
 #define BLANCO_T     "\x1b[37m"
 #define BLANCO_F     "\x1b[47m"
 
@@ -32,6 +30,7 @@
 #define CARTA 5
 #define ALARMA 10
 #define TIEMPOLLAMADA 1
+#define ULTIMOPEDIDO -1
 
 int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 
@@ -93,7 +92,7 @@ int comenzarJuego();
 void jugar();
 void guardarPuntuacion(int);
 void verPuntuacion();
-void salir();
+void salir(int *);
 
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 // FUNCIONES DEL TELEFONO
@@ -153,9 +152,8 @@ int main(){
         verPuntuacion();
         break;
     case '3':
-        terminar = 0;
-        salir();
         system("clear");
+        salir(&terminar);
         break;
     default:
       break;
@@ -265,7 +263,7 @@ void atenderPedido(Encargado * encargado) {
 
     // Si el que sigue es el ultimo pedido, avisa a cada cocinero que cierren la cocina
     // sino le entrega la comanda al que esta libre.
-    if(codigoPedido == -1){
+    if(codigoPedido == ULTIMOPEDIDO){
       for (int i = 0; i < COCINEROS-1; i++)
         cargandoPedido(encargado, codigoPedido);
     }
@@ -297,7 +295,7 @@ void cobrarPedido(Encargado * encargado, int * terminado) {
       printf("Pedido por cobrar: %d\n", pedido);
 
       // Si el delivery le avisa que ya termino, cierra el local
-      if( pedido != -1)
+      if( pedido != ULTIMOPEDIDO)
         printf("\t\t$%.0f guardados de pedido %d\n", encargado->precios[pedido], pedido);
       else {
         printf("\t\tCerrando local\n");
@@ -326,7 +324,7 @@ void * gestionTelefono(void * tmp){
 
   // Envia el último pedido
   sem_wait(telefono->semaforoTelefono);
-  telefono->pedido= -1;
+  telefono->pedido= ULTIMOPEDIDO;
   printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
   sem_post(telefono->semaforoLlamadas);
 
@@ -389,7 +387,7 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
     perror("LeerDato()");
   else {
     // Comienza a cocinar
-    if( pedidoActual != -1) {
+    if( pedidoActual != ULTIMOPEDIDO) {
       usleep(rand()% 500001 + 1000000); // Tiempo que se demora en cocinar
       pedidoListo(cocinero, pedidoActual);
     }
@@ -400,7 +398,7 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
       // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
       if(cocinero->cantCocineros == 0) {
         for(int i = 0; i < DELIVERIES; i++) {
-          pedidoListo(cocinero, -1);
+          pedidoListo(cocinero, ULTIMOPEDIDO);
         }
       }
     }    
@@ -452,7 +450,7 @@ void repartirPedido(Delivery * delivery, int * terminado) {
     perror("LeerDato()");
   else {
     // Sale a repartir el pedido
-    if( pedidoRepartir != -1) {
+    if( pedidoRepartir != ULTIMOPEDIDO) {
       usleep(rand()% 500001 + 500000);
       avisarCobro(delivery, pedidoRepartir);
     }
@@ -462,7 +460,7 @@ void repartirPedido(Delivery * delivery, int * terminado) {
       * terminado = -1;
       // Si es el ultimo delivery que termina, le avisa al encargado
       if(delivery->cantDeliveries == 0)
-        avisarCobro(delivery, -1);
+        avisarCobro(delivery, ULTIMOPEDIDO);
     }
   }
 }
@@ -473,7 +471,7 @@ void avisarCobro(Delivery * delivery, int pedidoCobrar){
   sem_post(delivery->memoria->semaforoPedidosPorCobrar);
 
   // Deja el dinero
-  if(pedidoCobrar != -1) 
+  if(pedidoCobrar != ULTIMOPEDIDO) 
     printf(NEGRO_T AMARILLO_F"\t\t\t\tdejando dinero de pedido %d"RESET_COLOR"\n", pedidoCobrar);  
   // Avisa que se va
   else 
@@ -722,6 +720,9 @@ void jugar(Encargado * encargado){
   free(terminado);
 }
 
-void salir(){
-
+void salir(int * terminar){
+  printf(MAGENTA_F BLANCO_T"\t\t\tGraicas por jugar!!!"RESET_COLOR"\n");
+  sleep(1);
+  *terminar = 0;
+  system("clear");
 }
