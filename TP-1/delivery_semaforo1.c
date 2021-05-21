@@ -248,6 +248,28 @@ int comenzarJuego(){
   return puntuacion;
 }
 
+void jugar(Encargado * encargado){
+  int * terminado = (int *)(calloc(1, sizeof(int)));
+  char eleccion;
+  while(* terminado != -1){
+    do
+    {
+      eleccion = getchar();
+    } while (eleccion != 'a' && eleccion != 's');
+    switch (eleccion){
+    case 'a':
+      atenderPedido(encargado);
+      break;
+    case 's':
+      cobrarPedido(encargado, terminado);
+      break;
+    default:
+      break;
+    }
+  }
+  free(terminado);
+}
+
 // Hilo Encargado
 void atenderPedido(Encargado * encargado) {
   
@@ -282,8 +304,6 @@ void cargandoPedido (Encargado * encargado, int codigoPedido) {
 void cobrarPedido(Encargado * encargado, int * terminado) {
 
   int cobrosPendientes = 0;
-  int pedido = encargado->memoria->dato;
-
   // Se fija si hay algun delivery esperando para que le cobre
   int error = sem_getvalue(encargado->memoria->semaforoPedidosPorCobrar, &cobrosPendientes);
   printf("Cantidad de cobros pendientes: %d\n", cobrosPendientes);
@@ -291,8 +311,7 @@ void cobrarPedido(Encargado * encargado, int * terminado) {
     if(cobrosPendientes > 0){
       sem_post(encargado->memoria->semaforoDejarDinero);
       sem_wait(encargado->memoria->semaforoCobrarDinero);
-
-      printf("Pedido por cobrar: %d\n", pedido);
+      int pedido = encargado->memoria->dato;
 
       // Si el delivery le avisa que ya termino, cierra el local
       if( pedido != ULTIMOPEDIDO)
@@ -397,11 +416,10 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
       * terminado = -1;
       // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
       if(cocinero->cantCocineros == 0) {
-        for(int i = 0; i < DELIVERIES; i++) {
+        for(int i = 0; i < DELIVERIES; i++)
           pedidoListo(cocinero, ULTIMOPEDIDO);
-        }
       }
-    }    
+    }
   }
 }
 
@@ -472,10 +490,10 @@ void avisarCobro(Delivery * delivery, int pedidoCobrar){
 
   // Deja el dinero
   if(pedidoCobrar != ULTIMOPEDIDO) 
-    printf(NEGRO_T AMARILLO_F"\t\t\t\tdejando dinero de pedido %d"RESET_COLOR"\n", pedidoCobrar);  
+    printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %d listo para cobrar"RESET_COLOR"\n", pedidoCobrar);  
   // Avisa que se va
   else 
-    printf(BLANCO_T VERDE_F"\t\t\t\tpresione s para cerrar el local"RESET_COLOR"\n");
+    printf(BLANCO_T VERDE_F"\t\t\t\tPresione s para cerrar el local"RESET_COLOR"\n");
   
   sem_wait(delivery->memoria->semaforoDejarDinero);
   delivery->memoria->dato = pedidoCobrar;
@@ -698,30 +716,8 @@ void verPuntuacion(){
     perror("fclose()");
 }
 
-void jugar(Encargado * encargado){
-  int * terminado = (int *)(calloc(1, sizeof(int)));
-  char eleccion;
-  while(* terminado != -1){
-    do
-    {
-      eleccion = getchar();
-    } while (eleccion != 'a' && eleccion != 's' && eleccion != 'd');
-    switch (eleccion){
-    case 'a':
-      atenderPedido(encargado);
-      break;
-    case 's':
-      cobrarPedido(encargado, terminado);
-      break;
-    default:
-      break;
-    }
-  }
-  free(terminado);
-}
-
 void salir(int * terminar){
-  printf(MAGENTA_F BLANCO_T"\t\t\tGraicas por jugar!!!"RESET_COLOR"\n");
+  printf(MAGENTA_F BLANCO_T"\t\t\tGracias por jugar!!!"RESET_COLOR"\n");
   sleep(1);
   *terminar = 0;
   system("clear");

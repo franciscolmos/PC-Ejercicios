@@ -39,6 +39,8 @@ struct Monitor_t* CrearMonitor (int tamano) {
   pthread_mutex_unlock(&aux->mutexEscritura);
   pthread_mutex_unlock(&aux->mutexLectura);
 
+  VerPedidos(aux);
+
   return aux;
 }
 
@@ -118,9 +120,8 @@ int LeerDato (struct Monitor_t *m, int *dato) {
 }
 
 void VerPedidos (struct Monitor_t *m) {
-  for(int i=0; i<m->size; i++) {
+  for(int i=0; i<m->size; i++)
     printf("PEDIDO %d: %d\n", i+1, m->dato[i]);
-  }
 }
 
 void BorrarMonitor (struct Monitor_t *m) {
