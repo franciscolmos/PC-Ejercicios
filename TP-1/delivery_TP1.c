@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
+// LIBRERIAS PROPIAS
 #include "MonitoresBuffer.h"
 
 // COLORES
@@ -31,6 +32,7 @@
 #define ALARMA 10
 #define TIEMPOLLAMADA 1
 #define ULTIMOPEDIDO -1
+#define PEDIDOSPORCARGAR 10
 
 int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 
@@ -55,9 +57,10 @@ typedef struct {
 // ESTRUCTURA DEL ENCARGADO
 typedef struct {
   Telefono * telefono;
+  Memoria * memoria;
   struct Monitor_t *monitorComandas;
   int ubiMemoria;
-  Memoria * memoria;
+  int pedidos[PEDIDOSPORCARGAR]; // UTILIZADO PARA PODER TENER MAS DE UNA COMANDA EN LA MANO ANTES DE CARGARLO EN EL BUFFER, Y ASI PODER ATENDER EL TELEFONO VARIAS VECES ANTES DE CARGAR LOS PEDIDOS EN EL MONITOR DE COMANDAS
   float precios[CARTA];
 }Encargado;
 
@@ -106,7 +109,7 @@ void TimeOut();
 
 // FUNCIONES DEL ENCARGADO
 void atenderPedido(Encargado *);
-void cargandoPedido(Encargado *, int);
+void cargarPedido(Encargado *);
 void cobrarPedido(Encargado *, int *);
 
 // FUNCIONES DEL COCINERO
@@ -139,11 +142,12 @@ int main(){
 
     do{
       eleccion = getchar();
+      __fpurge(stdin);
       if(eleccion != '1' && eleccion != '2' && eleccion != '3') {
         printf("\nOpcion invalida, por favor seleccion 1 2 o 3\nIngrese una opcion: ");
       }
     }while(eleccion != '1' && eleccion != '2' && eleccion != '3');
-    __fpurge(stdin);
+
 
     switch (eleccion)
     {
@@ -181,7 +185,8 @@ void mostrarMenu() {
   printf(NEGRO_T BLANCO_F"|             "BLANCO_T MAGENTA_F"Como jugar"NEGRO_T BLANCO_F"             |"RESET_COLOR"\n");
   printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
   printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"a: Atender telefono"NEGRO_T BLANCO_F"        |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"s: Cobrar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"s: Cargar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"d: Cobrar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
   printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
   printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
   printf("Ingrese una opcion: ");
@@ -261,12 +266,15 @@ void jugar(Encargado * encargado){
     do
     {
       eleccion = getchar();
-    } while (eleccion != 'a' && eleccion != 's');
+    } while (eleccion != 'a' && eleccion != 's' && eleccion != 'd');
     switch (eleccion){
     case 'a':
       atenderPedido(encargado);
       break;
     case 's':
+      cargarPedido(encargado);
+      break;
+    case 'd':
       cobrarPedido(encargado, terminado);
       break;
     default:
@@ -286,25 +294,39 @@ void atenderPedido(Encargado * encargado) {
     usleep(rand()% 100001 + 250000); // Tiempo que tarda en tomar el pedido
     int codigoPedido = encargado->telefono->pedido;
 
+    for(int i = 0; i < PEDIDOSPORCARGAR; i++){
+      if(encargado->pedidos[i] == -2){
+        encargado->pedidos[i] = codigoPedido;
+        printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %d lista para cargar"RESET_COLOR"\n", codigoPedido);
+        break;
+      }
+    }
+
     // Cuelga el telefono
     sem_post(encargado->telefono->semaforoTelefono);
-
-    // Si el que sigue es el ultimo pedido, avisa a cada cocinero que cierren la cocina
-    // sino le entrega la comanda al que esta libre.
-    if(codigoPedido == ULTIMOPEDIDO){
-      for (int i = 0; i < COCINEROS-1; i++)
-        cargandoPedido(encargado, codigoPedido);
-    }
-    cargandoPedido(encargado, codigoPedido);
   }
 }
 
-void cargandoPedido (Encargado * encargado, int codigoPedido) {
+void cargarPedido (Encargado * encargado) {
 
-  // Carga el pedido a los cocineros
-  int error = GuardarDato(encargado->monitorComandas, codigoPedido);
-  if(error)
-    perror("GuardarDato()");
+  for(int  i = 0; i < PEDIDOSPORCARGAR; i++){
+    int codigoPedido = encargado->pedidos[i];
+    if(codigoPedido != -2 && codigoPedido != ULTIMOPEDIDO){
+      encargado->pedidos[i] = -2;
+      // Carga el pedido a los cocineros
+      int error = GuardarDato(encargado->monitorComandas, codigoPedido);
+      if(error)
+        perror("GuardarDato()");
+    }else if(codigoPedido != -2 && codigoPedido == ULTIMOPEDIDO){
+      encargado->pedidos[i] = -2;
+      for (int i = 0; i < COCINEROS; i++){
+        // Si el que sigue es el ultimo pedido, avisa a cada cocinero que cierren la cocina
+        int error =  GuardarDato(encargado->monitorComandas, codigoPedido);
+        if(error)
+          perror("GuardarDato()");
+      }
+    }
+  }
 }
 
 void cobrarPedido(Encargado * encargado, int * terminado) {
@@ -498,7 +520,7 @@ void avisarCobro(Delivery * delivery, int pedidoCobrar){
     printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %d listo para cobrar"RESET_COLOR"\n", pedidoCobrar);  
   // Avisa que se va
   else 
-    printf(BLANCO_T VERDE_F"\t\t\t\tPresione s para cerrar el local"RESET_COLOR"\n");
+    printf(BLANCO_T VERDE_F"\t\t\t\tPresione d para cerrar el local"RESET_COLOR"\n");
   
   sem_wait(delivery->memoria->semaforoDejarDinero);
   delivery->memoria->dato = pedidoCobrar;
@@ -527,6 +549,8 @@ Encargado * crearEncargado(Telefono *telefono, struct Monitor_t * monitorComanda
   encargado->memoria = NULL;
   for(int i = 0; i < CARTA; i++)
     encargado->precios[i] = 100 * (i+1);
+  for(int i = 0; i < PEDIDOSPORCARGAR; i++)
+    encargado->pedidos[i] = -2;
   return encargado;
 }
 
@@ -713,8 +737,8 @@ void verPuntuacion(){
   }
 
   int temp = getchar();
-  if(temp){}
   __fpurge(stdin);
+  if(temp){}
 
   free(nombre);
   free(score);
