@@ -1,0 +1,7 @@
+@startuml Cocinero
+    [*] --> EsperandoPedido
+    EsperandoPedido --> Cocinando : nuevoPedido()
+    Cocinando --> LiberandoPedido : pedidoCocinado()
+    LiberandoPedido --> EsperandoPedido : pedidoListo()
+    LiberandoPedido --> [*] : ultimoPedido()
+@enduml

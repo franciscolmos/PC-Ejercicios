@@ -7,3 +7,10 @@ Felipe: 7
 Francisco: 6
 Francisco: 7
 Francisco: 7
+Felipe: 5
+jeje: 6
+Felipe: 4
+Felipe: 6
+Felipe: 3
+Felipe: 6
+Felipe: 7
