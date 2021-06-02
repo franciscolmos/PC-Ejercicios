@@ -3,9 +3,9 @@
 
 int main(void)
 {
-    int number = 49;
-
-    printf("The character value :%c", (char)(number)); 
+    char cadena[3];
+    snprintf(cadena,3,"%d", -1);
+    printf("%s",cadena);
 
     return 0;
 }

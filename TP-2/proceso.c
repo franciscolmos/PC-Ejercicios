@@ -257,7 +257,9 @@ void * gestionTelefono(void * tmp){
 
   // Envia el último pedido
   sem_wait(telefono->semaforoTelefono);
-  write(telefono->tubo[1], menosUno(), 2);
+  char cadena[3];
+  snprintf(cadena,3,"%d", -1);
+  write(telefono->tubo[1], cadena, 2);
   printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
   sem_post(telefono->semaforoLlamadas);
 
@@ -321,7 +323,7 @@ Encargado * crearEncargado(Telefono *telefono){
   return encargado;
 }
 
-char * menosUno(){
+/* char * menosUno(){
   int number1 = 45;
   int number2 = 49;
   char signo [2];
@@ -332,7 +334,7 @@ char * menosUno(){
   strcpy(string,signo);
   strcat(string, charNumber);
   return string;
-}
+} */
 
 void guardarPuntuacion(int score) {
   FILE * archivoPuntuacion;
