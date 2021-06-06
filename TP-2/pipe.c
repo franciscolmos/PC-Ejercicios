@@ -1,12 +1,15 @@
 #include<stdio.h>
 #include<string.h>
+#include<stdlib.h>
+#include<time.h>
 
 int main(void)
 {
-    char cadena[3];
-    snprintf(cadena,3,"%d", -1);
-    printf("%s",cadena);
-
-    return 0;
+   struct timespec ts;
+   clock_gettime(CLOCK_REALTIME, &ts);
+   printf("%d\n", ts.tv_sec);
+   ts.tv_sec += 1;
+   printf("%d\n", ts.tv_sec);
+   return 0;
 }
 

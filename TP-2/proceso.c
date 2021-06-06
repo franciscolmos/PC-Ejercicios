@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <string.h>
+#include <time.h>
 
 // COLORES
 #define RESET_COLOR  "\x1b[0m"
@@ -34,7 +35,6 @@ int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 // ESTRUCTURA DEL TELEFONO
 typedef struct {
   sem_t * semaforoTelefono;
-  sem_t * semaforoLlamadas;
   int pedido;
   int * puntuacion;
   int * tubo;
@@ -63,7 +63,7 @@ void salir(int *);
 /*----------------------------------------------------------------------------*/
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 // FUNCIONES DEL TELEFONO
-void * gestionTelefono( void *);
+void gestionTelefono( void *);
 void recibirLlamada(Telefono * telefono);
 void TimeOut();
 
@@ -126,7 +126,7 @@ void jugar(Encargado * encargado){
       atenderPedido(encargado);
       break;
     case 's':
-      printf("proximamente\n");
+      encargado->comandaEnMano = 0;
       break;
     case 'd':
       printf("proximamente\n");
@@ -218,16 +218,16 @@ void atenderPedido(Encargado * encargado) {
     printf(NEGRO_T BLANCO_F"\t\tdejar comanda antes de atender otro pedido"RESET_COLOR"\n");
     return;
   }
-  
-  // Verifica si hay alguna llamada entrante
-  int error = sem_trywait(encargado->telefono->semaforoLlamadas);
-  if(!error) {
-    int * tubo = encargado->telefono->tubo;
-    char numeroPedido = '9';
+  sem_post(encargado->telefono->semaforoTelefono);
+  int telefonoSonando = 0;
+  usleep(200000);
+  sem_getvalue(encargado->telefono->semaforoTelefono, &telefonoSonando);
+  if(telefonoSonando == 0){
+    char numeroPedido[3];
     printf("\t\ttelefono atendido\n");
     usleep(rand()% 100001 + 250000); // Tiempo que tarda en tomar el pedido
-    read(tubo[0],numeroPedido,2);
-    encargado->pedidoActual = numeroPedido - '0';
+    read(encargado->telefono->tubo[0], numeroPedido, 3);
+    encargado->pedidoActual = atoi(numeroPedido);
     encargado->comandaEnMano = 1; // Flag, encargado debe cargar el pedido antes de atender otro
 
     if(encargado->pedidoActual != -1)
@@ -235,15 +235,11 @@ void atenderPedido(Encargado * encargado) {
             encargado->pedidoActual);
     else
       printf(BLANCO_T MAGENTA_F"\t\tavisar a los cocineros que cierren la cocina"RESET_COLOR"\n");
-
-    // Cuelga el telefono
-    sem_post(encargado->telefono->semaforoTelefono);
   }
 }
 
 // Hilo telefono
-void * gestionTelefono(void * tmp){
-  char numeroPedido = "";
+void gestionTelefono(void * tmp){
   Telefono * telefono = (Telefono *) tmp;
 
   // Seteamos la alarma del juego e iniciamos el contador
@@ -252,47 +248,37 @@ void * gestionTelefono(void * tmp){
 
   // Ciclo de recibir llamadas, finaliza cuando suena la alarma
   close(telefono->tubo[0]);
-  while (timeout)
+  while (timeout){
+    usleep(rand() % 500000);
     recibirLlamada(telefono);
-
+  }
   // Envia el último pedido
   sem_wait(telefono->semaforoTelefono);
   char cadena[3];
-  snprintf(cadena,3,"%d", -1);
-  write(telefono->tubo[1], cadena, 2);
+  snprintf(cadena, 3, "%d", ULTIMOPEDIDO);
+  write(telefono->tubo[1], cadena, 3);
   printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
-  sem_post(telefono->semaforoLlamadas);
 
   close(telefono->tubo[1]);
 }
 
 void recibirLlamada(Telefono * telefono) {
-  int error = 0;
-  char numeroPedido = '9';
-  // El telefono comienza a recibir llamadas mientras esta colgado
-  sem_wait(telefono->semaforoTelefono);
-  usleep(rand()% 750001 + 250000);
-  telefono->pedido = rand() % CARTA;
   printf(BLANCO_T ROJO_F"\ttelefono sonando"RESET_COLOR"\n");
-
-  // El telefono comienza a sonar
-  sem_post(telefono->semaforoLlamadas);
-  sleep(TIEMPOLLAMADA); // Tiempo que el cliente espera antes de cortar
-  int telefonoSonando = 0;
-
-  // Si el telefono no es atendido, se pierde la llamada
-  sem_getvalue(telefono->semaforoLlamadas, &telefonoSonando);
-  if(telefonoSonando > 0) {
-    int error = sem_trywait(telefono->semaforoLlamadas);
-    if(!error) {
-      printf("\tSe perdio la llamada\n");
-      sem_post(telefono->semaforoTelefono);
-    }
-  }
-  else
-    sprintf(numeroPedido, "%c", telefono->pedido + 48);
+  int error = 0;
+  char numeroPedido [2];
+  // El telefono comienza a recibir llamadas mientras esta colgado
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec += 1;
+  error = sem_timedwait(telefono->semaforoTelefono, &ts);
+  if(!error){
+    telefono->pedido = rand() % CARTA;
+    snprintf(numeroPedido, 2, "%d", telefono->pedido);
     error=write(telefono->tubo[1], numeroPedido, 2);
-    *telefono->puntuacion = *telefono->puntuacion+1; // Si se atiende, suma un punto
+    *telefono->puntuacion = *telefono->puntuacion+1;
+  }else{
+    printf("\tSe perdio la llamada\n");
+  }
 }
 
 void TimeOut() {
@@ -302,9 +288,7 @@ void TimeOut() {
 Telefono * crearTelefono(int * puntuacion) {
   Telefono * telefono = (Telefono *)(calloc(1, sizeof(Telefono)));
   telefono->semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
-  telefono->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
-  telefono->semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
-  telefono->semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
+  telefono->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 0);
   telefono->puntuacion = puntuacion;
   telefono->tubo = (int *)(calloc(2, sizeof(int)));
   int error = 0;
@@ -322,19 +306,6 @@ Encargado * crearEncargado(Telefono *telefono){
     encargado->precios[i] = 100 * (i+1);
   return encargado;
 }
-
-/* char * menosUno(){
-  int number1 = 45;
-  int number2 = 49;
-  char signo [2];
-  char charNumber [2];
-  sprintf(signo, "%c", number1);
-  sprintf(charNumber,"%c" , number2);
-  char string [1];
-  strcpy(string,signo);
-  strcat(string, charNumber);
-  return string;
-} */
 
 void guardarPuntuacion(int score) {
   FILE * archivoPuntuacion;
