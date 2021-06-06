@@ -1,3 +1,11 @@
 f: 4
 a: 8
 s: 6
+s: 6
+s: 5
+s: 5
+Felipe: 0
+Felipe: 0
+Felipe: 7
+FElipe: 9
+Felipe: 8
