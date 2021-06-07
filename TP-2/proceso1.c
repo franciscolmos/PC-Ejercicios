@@ -53,15 +53,23 @@ typedef struct {
 // ESTRUCTURA DEL COCINERO
 typedef struct {
   mqd_t recibir;
+  mqd_t enviar;
   int cantCocineros;
 }Cocinero;
+
+// ESTRUCTURA DEL DELIVERY
+typedef struct {
+  mqd_t recibir;
+  int cantDelivery;
+}Delivery;
 
 /*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // ACTORES
-Telefono * crearTelefono();
+Telefono  * crearTelefono();
 Encargado * crearEncargado(Telefono *, mqd_t);
-Cocinero * crearCocinero(mqd_t);
+Cocinero  * crearCocinero(mqd_t, mqd_t);
+Delivery  * crearDelivery(mqd_t);
 
 /*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
@@ -89,6 +97,13 @@ void cargarPedido(Encargado *, int *);
 void hilosCocineros(Cocinero *);
 void * gestionCocinero(void *);
 void cocinarPedido(Cocinero *, int *);
+void pedidoListo(Cocinero *, char *);
+
+// FUNCIONES DEL DELIVERY
+void hilosDelivery(Delivery *);
+void * gestionDelivery(void *);
+void repartirPedido(Delivery *, int *);
+void avisarCobro(Delivery *, int);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
@@ -184,18 +199,20 @@ int comenzarJuego(){
   attr.mq_maxmsg = 10;  
   attr.mq_msgsize = 4;  
   attr.mq_curmsgs = 0;
-  mqd_t mqdComandasEnc, mqdComandasCoc;
+  mqd_t mqdComandasEnc, mqdComandasCoc, mqdPedidosCoc, mqdPedidosDel;
   mqdComandasEnc = mq_open("/encargadoCocineros",O_WRONLY | O_CREAT, 0777, &attr);
   mqdComandasCoc = mq_open("/encargadoCocineros",O_RDONLY, 0777, &attr);
+  mqdPedidosCoc  = mq_open("/cocinerosDelivery",O_WRONLY | O_CREAT, 0777, &attr);
+  mqdPedidosDel  = mq_open("/cocinerosDelivery",O_RDONLY, 0777, &attr);
 
   // Creamos una fifo para del-enc. Tmb los semaforos
 
 
   // Se crean los actores del juego donde pasamos lo que creamos recien
-  Telefono * telefono = crearTelefono();
+  Telefono  * telefono  = crearTelefono();
   Encargado * encargado = crearEncargado(telefono, mqdComandasEnc);
-  Cocinero * cocinero = crearCocinero(mqdComandasCoc);
-  // Delivery * delivery = crearDelivery(monitorPedidos, memoria);
+  Cocinero  * cocinero  = crearCocinero(mqdComandasCoc, mqdPedidosCoc);
+  Delivery  * delivery  = crearDelivery(mqdPedidosDel);
 
   pid_t pid;
 
@@ -208,6 +225,12 @@ int comenzarJuego(){
   pid = fork();
   if(pid == 0){
     hilosCocineros(cocinero);
+    exit(0);
+  }
+
+  pid = fork();
+  if(pid == 0){
+    hilosDelivery(delivery);
     exit(0);
   }
 
@@ -245,6 +268,14 @@ int comenzarJuego(){
   status = mq_close(encargado->enviar);
   if (!status) {
     status = mq_unlink("/encargadoCocineros");
+    if (status)
+      perror("mq_close()");
+  }
+
+  status = mq_close(cocinero->enviar);
+  status = mq_close(delivery->recibir);
+  if (!status) {
+    status = mq_unlink("/cocinerosDelivery");
     if (status)
       perror("mq_close()");
   }
@@ -292,6 +323,8 @@ void cargarPedido (Encargado * encargado, int * terminado) {
     printf(NEGRO_T BLANCO_F"\t\tatender el telefono antes de cargar un pedido"RESET_COLOR"\n");
     return;
   }
+
+  // Deja comanda a los cocineros
   if(strcmp(encargado->pedidoActual, "-1")) {
     int enviado=mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
     if (enviado == -1)
@@ -404,7 +437,7 @@ void hilosCocineros(Cocinero * cocinero) {
 }
 
 void * gestionCocinero(void * tmp) {
-  Cocinero *cocinero = (Cocinero *) tmp;
+  Cocinero *cocinero = (Cocinero *) (tmp);
   int * terminado = (int *)(calloc(1, sizeof(int)));
 
   // Ciclo de cocinar pedidos, finaliza cuando el encargado avisa
@@ -424,11 +457,93 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
   if (recibido == -1)
     perror("COCINERO mq_receive");
   else{
-    if(strcmp(pedido, "-1"))
-      printf("\t\t\tPedido %s cocinado\n", pedido);
-    else 
-      *terminado = -1;
+    if(strcmp(pedido, "-1")) {
+      usleep(rand()% 500001 + 1000000); // Tiempo que se demora en cocinar
+      pedidoListo(cocinero, pedido);
+    }
+    else{
+      cocinero->cantCocineros--;
+      * terminado = -1;
+      // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
+      if(cocinero->cantCocineros == 0) {
+        for(int i = 0; i < DELIVERIES; i++) {
+          pedidoListo(cocinero, "-1");
+          printf("\t\t\tSe va el cocinero\n");
+        }
+      }
+    }
   }
+}
+
+void pedidoListo(Cocinero * cocinero, char * pedido) {
+  // Deja el pedido en el mostrador
+  if(strcmp(pedido, "-1")) {
+    int enviado=mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
+    printf("\t\t\tPedido %s cargado\n", pedido);
+    if (enviado == -1)
+      perror("COCINERO mq_send");
+  }
+  else {
+    for (int i = 0; i < DELIVERIES; i++){
+      // Si el pedido actual es el ultimo, avisa a cada delivery que se vayan
+      int enviado=mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
+      if (enviado==-1)
+        perror("COCINERO mq_send");
+    }
+  }
+}
+
+
+// Hilo Delivery
+void hilosDelivery(Delivery * delivery) {
+  pthread_t hilosCocineros[DELIVERIES];
+  for(int i = 0; i < DELIVERIES; i++) 
+    pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(delivery));
+  for(int i = 0; i < DELIVERIES; i++)
+    pthread_join(hilosCocineros[i], NULL);
+}
+
+void * gestionDelivery(void * tmp) {
+  Delivery * delivery = (Delivery *)(tmp);
+  int * terminado = (int *)(calloc(1, sizeof(int)));
+
+  // Ciclo de repartir pedidos
+  while(*terminado != -1)
+    repartirPedido(delivery, terminado);
+
+  free(terminado);
+
+  // Termino el hilo
+  pthread_exit(NULL);
+}
+
+void repartirPedido(Delivery * delivery, int * terminado) {
+  // Toma una comanda para empezar a cocinar
+  char pedido[5];
+  int recibido = mq_receive(delivery->recibir, pedido, 5, NULL);
+  if (recibido == -1)
+    perror("DELIVERY mq_receive");
+  else{
+    if(strcmp(pedido, "-1")) {
+      usleep(rand()% 500001 + 500000);  // Tiempo que se demora en repartir pedido
+      printf("\t\t\t\tPedido %s repartido\n", pedido);
+      // avisarCobro(delivery, pedido);
+    }
+    else{
+      delivery->cantDelivery--;
+      * terminado = -1;
+      // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
+      if(delivery->cantDelivery == 0) {
+        for(int i = 0; i < DELIVERIES; i++)
+          printf("\t\t\t\tSe va el delivery\n");
+          // pedidoListo(cocinero, "-1");
+      }
+    }
+  }
+}
+
+void avisarCobro(Delivery * delivery, int terminado) {
+
 }
 
 /*----------------------------------------------------------------------------*/
@@ -456,11 +571,20 @@ Encargado * crearEncargado(Telefono * tel, mqd_t cola) {
 }
 
 // Creacion de Cocinero
-Cocinero * crearCocinero(mqd_t recibir) {
+Cocinero * crearCocinero(mqd_t recibir, mqd_t enviar) {
   Cocinero * cocinero = (Cocinero *)(calloc(1, sizeof(Cocinero)));
   cocinero->recibir = recibir;
+  cocinero->enviar  = enviar;
   cocinero->cantCocineros = COCINEROS;
   return cocinero;
+}
+
+// Creacion de Delivery
+Delivery  * crearDelivery(mqd_t recibir) {
+  Delivery * delivery = (Delivery *)(calloc(1, sizeof(Delivery)));
+  delivery->recibir = recibir;
+  delivery->cantDelivery = DELIVERIES;
+  return delivery;
 }
 
 /*----------------------------------------------------------------------------*/
