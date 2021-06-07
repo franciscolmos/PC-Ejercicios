@@ -5,11 +5,9 @@
 
 int main(void)
 {
-   struct timespec ts;
-   clock_gettime(CLOCK_REALTIME, &ts);
-   printf("%d\n", ts.tv_sec);
-   ts.tv_sec += 1;
-   printf("%d\n", ts.tv_sec);
-   return 0;
+   char cadena [2];
+   snprintf(cadena, 3, "%d", -1);
+   if(!strcmp(cadena, "-1")){
+      printf("EA!\n");
+   }
 }
-
