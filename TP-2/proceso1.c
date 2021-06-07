@@ -10,6 +10,8 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <mqueue.h>
 
 // COLORES
 #define RESET_COLOR  "\x1b[0m"
@@ -41,13 +43,25 @@ typedef struct {
 // ESTRUCTURA DEL ENCARGADO
 typedef struct {
   Telefono * comTel;
+  char pedidoActual [3];
   int puntuacion;
   int comandaEnMano;
+  mqd_t enviar;
   float precios[CARTA];
 }Encargado;
 
+// ESTRUCTURA DEL COCINERO
+typedef struct {
+  mqd_t recibir;
+  int cantCocineros;
+}Cocinero;
+
+/*----------------------------------------------------------------------------*/
+/*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
+// ACTORES
 Telefono * crearTelefono();
-Encargado * crearEncargado(Telefono *);
+Encargado * crearEncargado(Telefono *, mqd_t);
+Cocinero * crearCocinero(mqd_t);
 
 /*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
@@ -68,7 +82,13 @@ void hacerUltimoPedido(Telefono *);
 void TimeOut();
 
 // FUNCIONES DEL ENCARGADO
-void atenderPedido(Encargado *, int *);
+void atenderPedido(Encargado *);
+void cargarPedido(Encargado *, int *);
+
+// FUNCIONES DEL COCINERO
+void hilosCocineros(Cocinero *);
+void * gestionCocinero(void *);
+void cocinarPedido(Cocinero *, int *);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
@@ -122,11 +142,10 @@ void jugar(Encargado * encargado){
 
     switch (eleccion){
     case 'a':
-      atenderPedido(encargado, terminado);
+      atenderPedido(encargado);
       break;
     case 's':
-      printf("\t\tComanda entregada\n");
-      encargado->comandaEnMano = 0;
+      cargarPedido(encargado, terminado);
       break;
     case 'd':
       printf("proximamente\n");
@@ -160,35 +179,37 @@ void mostrarMenu() {
 
 int comenzarJuego(){
   // Creamos las colas de mensajes para enc-coc y coc-del
+  struct mq_attr attr;  
+  attr.mq_flags = 0;  
+  attr.mq_maxmsg = 10;  
+  attr.mq_msgsize = 4;  
+  attr.mq_curmsgs = 0;
+  mqd_t mqdComandasEnc, mqdComandasCoc;
+  mqdComandasEnc = mq_open("/encargadoCocineros",O_WRONLY | O_CREAT, 0777, &attr);
+  mqdComandasCoc = mq_open("/encargadoCocineros",O_RDONLY, 0777, &attr);
 
   // Creamos una fifo para del-enc. Tmb los semaforos
 
 
   // Se crean los actores del juego donde pasamos lo que creamos recien
   Telefono * telefono = crearTelefono();
-  Encargado * encargado = crearEncargado(telefono);
-  // Telefono * telefono = crearTelefono(&puntuacion);
-  // Encargado * encargado = crearEncargado(telefono);
-  // Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
+  Encargado * encargado = crearEncargado(telefono, mqdComandasEnc);
+  Cocinero * cocinero = crearCocinero(mqdComandasCoc);
   // Delivery * delivery = crearDelivery(monitorPedidos, memoria);
 
   pid_t pid;
 
   pid = fork();
   if(pid == 0) {
-      gestionTelefono(telefono);
-      exit(0);
+    gestionTelefono(telefono);
+    exit(0);
   }
-  /* else if(pid > 0) {
-      pid = fork();
-      if(pid == 0)
-          printf("Soy el hijo numero 2. Los cocineros\n");
-      else if(pid > 0) {
-          pid = fork();
-          if(pid == 0)
-              printf("Soy el hijo numero 3. Los deliverys\n");
-      } 
-  }*/
+
+  pid = fork();
+  if(pid == 0){
+    hilosCocineros(cocinero);
+    exit(0);
+  }
 
   // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
   if(pid > 0){
@@ -220,6 +241,14 @@ int comenzarJuego(){
   else
     perror("sem_close()");
 
+  status = mq_close(cocinero->recibir);
+  status = mq_close(encargado->enviar);
+  if (!status) {
+    status = mq_unlink("/encargadoCocineros");
+    if (status)
+      perror("mq_close()");
+  }
+
   // Se libera la memoria de los objetos creados
   // free(telefono);
   // free(encargado);
@@ -230,7 +259,7 @@ int comenzarJuego(){
 }
 
 // Hilo Encargado
-void atenderPedido(Encargado * encargado, int * terminado) {
+void atenderPedido(Encargado * encargado) {
   // Si tiene una comanda en la mano, no puede atender el telefono
   if(encargado->comandaEnMano) {
     printf(NEGRO_T BLANCO_F"\t\tdejar comanda antes de atender otro pedido"RESET_COLOR"\n");
@@ -241,25 +270,46 @@ void atenderPedido(Encargado * encargado, int * terminado) {
   int error = sem_trywait(encargado->comTel->semaforoLlamadas);
   if(!error) {
     sem_post(encargado->comTel->semaforoTelefono);
-    char numeroPedido[3];
-    read(encargado->comTel->tubo[0], numeroPedido, 3);
+    read(encargado->comTel->tubo[0], encargado->pedidoActual, 3);
     encargado->comandaEnMano = 1; // Flag, encargado debe cargar el pedido antes de atender otro
     usleep(rand()% 50001 + 50000); // Tiempo que tarda en tomar el pedido
 
-    if(strcmp(numeroPedido, "-1")){
+    if(strcmp(encargado->pedidoActual, "-1")){
         printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %s lista para cargar"RESET_COLOR"\n", 
-            numeroPedido);
+            encargado->pedidoActual);
       encargado->puntuacion++;
       sem_post(encargado->comTel->semaforoTelefono); // Cuelga el telefono
     }
     else {
       printf(BLANCO_T MAGENTA_F"\t\tavisar a los cocineros que cierren la cocina"RESET_COLOR"\n");
-      *terminado = -1;
     }
   }
 }
 
-// Hilo telefono
+void cargarPedido (Encargado * encargado, int * terminado) {
+  // Si no tiene una comanda en la mano, no puede cargar ningun pedido
+  if(!encargado->comandaEnMano) {
+    printf(NEGRO_T BLANCO_F"\t\tatender el telefono antes de cargar un pedido"RESET_COLOR"\n");
+    return;
+  }
+  if(strcmp(encargado->pedidoActual, "-1")) {
+    int enviado=mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
+    if (enviado == -1)
+      perror("ENCARGADO mq_send");
+  }
+  else {
+    for (int i = 0; i < COCINEROS; i++){
+      // Si el pedido actual es el ultimo, avisa a cada cocinero que cierren la cocina
+      int enviado=mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
+      if (enviado==-1)
+        perror("ENCARGADO mq_send");
+    }
+    *terminado = -1;
+  }
+  encargado->comandaEnMano = 0;
+}
+
+// Hilo Telefono
 void gestionTelefono(void * tmp){
   Telefono * telefono = (Telefono *) tmp;
   
@@ -344,6 +394,43 @@ void TimeOut() {
   timeout = 0;
 }
 
+// Hilo Cocinero
+void hilosCocineros(Cocinero * cocinero) {
+  pthread_t hilosCocineros[COCINEROS];
+  for(int i = 0; i < COCINEROS; i++) 
+    pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(cocinero));
+  for(int i = 0; i < COCINEROS; i++)
+    pthread_join(hilosCocineros[i], NULL);
+}
+
+void * gestionCocinero(void * tmp) {
+  Cocinero *cocinero = (Cocinero *) tmp;
+  int * terminado = (int *)(calloc(1, sizeof(int)));
+
+  // Ciclo de cocinar pedidos, finaliza cuando el encargado avisa
+  while(*terminado != -1)
+    cocinarPedido(cocinero, terminado);
+    
+  free(terminado);
+
+  pthread_exit(NULL);
+}
+
+void cocinarPedido(Cocinero * cocinero, int * terminado) {
+  // Toma una comanda para empezar a cocinar
+  char pedido[5];
+  int recibido = mq_receive(cocinero->recibir, pedido, 5, NULL);
+  // usleep(rand() % 1000001 + 500000);
+  if (recibido == -1)
+    perror("COCINERO mq_receive");
+  else{
+    if(strcmp(pedido, "-1"))
+      printf("\t\t\tPedido %s cocinado\n", pedido);
+    else 
+      *terminado = -1;
+  }
+}
+
 /*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // Creacion de Telefono
@@ -359,12 +446,21 @@ Telefono * crearTelefono() {
 }
 
 // Creacion de Encargado
-Encargado * crearEncargado(Telefono * tel) {
+Encargado * crearEncargado(Telefono * tel, mqd_t cola) {
   Encargado * encargado = (Encargado *)(calloc(1, sizeof(Encargado)));
   encargado->comTel = tel;
+  encargado->enviar = cola;
   for(int i = 0; i < CARTA; i++)
     encargado->precios[i] = 100 * (i+1);
   return encargado;
+}
+
+// Creacion de Cocinero
+Cocinero * crearCocinero(mqd_t recibir) {
+  Cocinero * cocinero = (Cocinero *)(calloc(1, sizeof(Cocinero)));
+  cocinero->recibir = recibir;
+  cocinero->cantCocineros = COCINEROS;
+  return cocinero;
 }
 
 /*----------------------------------------------------------------------------*/

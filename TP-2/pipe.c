@@ -5,9 +5,9 @@
 
 int main(void)
 {
-   char cadena [2];
-   snprintf(cadena, 3, "%d", -1);
-   if(!strcmp(cadena, "-1")){
-      printf("EA!\n");
-   }
+   char cadena [50];
+   strncpy(cadena, "OLA K ASE", 50);
+   printf("CADENA: %s\nTAMAÑO: %d\n", cadena, strlen(cadena));
+   strncpy(cadena, "OLAAAAA K ASEEEE", 50);
+   printf("CADENA: %s\nTAMAÑO: %d\n", cadena, strlen(cadena));
 }
