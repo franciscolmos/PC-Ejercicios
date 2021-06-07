@@ -5,11 +5,17 @@
 
 int main(void)
 {
-   struct timespec ts;
-   clock_gettime(CLOCK_REALTIME, &ts);
-   printf("%d\n", ts.tv_sec);
-   ts.tv_sec += 1;
-   printf("%d\n", ts.tv_sec);
-   return 0;
+   int a = -1;
+   int b = 0;
+   int c = 1;
+
+   if(a)
+      printf("-1");
+   
+   if(b)
+      printf("0");
+
+   if(c)
+      printf("1");
 }
 
