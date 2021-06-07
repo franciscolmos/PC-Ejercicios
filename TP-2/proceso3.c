@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <mqueue.h>
 
 // COLORES
@@ -25,7 +26,7 @@
 
 // DATOS DEL JUEGO
 #define ENCARGADOS 1
-#define COCINEROS 2
+#define COCINEROS 3
 #define DELIVERIES 2
 #define CARTA 5
 #define ALARMA 10
@@ -57,6 +58,7 @@ typedef struct {
 // ESTRUCTURA DEL ENCARGADO
 typedef struct {
   mqd_t recibir;
+  int cantCocineros;
 }Cocinero;
 
 /*----------------------------------------------------------------------------*/
@@ -84,7 +86,7 @@ void TimeOut();
 
 // FUNCIONES DEL ENCARGADO
 void atenderPedido(Encargado *, int *);
-void cargarPedido(Encargado *, int *);
+void cargarPedido(Encargado *);
 
 // FUNCIONES DEL COCINERO
 void * gestionCocinero(void *);
@@ -145,9 +147,7 @@ void jugar(Encargado * encargado){
       atenderPedido(encargado, terminado);
       break;
     case 's':
-      cargarPedido(encargado, terminado);
-      /* printf("\t\tComanda entregada\n");
-      encargado->comandaEnMano = 0; */
+      cargarPedido(encargado);
       break;
     case 'd':
       printf("proximamente\n");
@@ -180,103 +180,100 @@ void mostrarMenu() {
 }
 
 int comenzarJuego(){
-  // Creamos los pipelines entre tel-enc. Tmb los semaforos
-  sem_t * semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
-  semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
-  sem_t * semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
-  semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
-  int * tubo = (int *)(calloc(2, sizeof(int)));
-  int error = pipe(tubo);
-  if(error)
+    // Creamos los pipelines entre tel-enc. Tmb los semaforos
+    sem_t * semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
+    semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
+    sem_t * semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
+    semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
+    int * tubo = (int *)(calloc(2, sizeof(int)));
+    int error = pipe(tubo);
+    if(error)
     perror("error al crear el pipe");
 
-  // Creamos las colas de mensajes para enc-coc y coc-del
-  mqd_t nqdComandas;
-  nqdComandas=mq_open("/encargadoCocineros",O_RDWR | O_CREAT, 0777, NULL);
-  if (nqdComandas==-1) {
+    // Creamos las colas de mensajes para enc-coc y coc-del
+    mqd_t mqdComandas;
+    mqdComandas = mq_open("/encargadoCocineros",O_RDWR | O_CREAT, 0777, NULL);
+    if (mqdComandas == -1) {
     perror("mq_open 1");
-    error=nqdComandas;
-  }
+    error = mqdComandas;
+    }
+
+    // Creamos una fifo para del-enc. Tmb los semaforos
 
 
-  // Creamos una fifo para del-enc. Tmb los semaforos
+    // Se crean los actores del juego donde pasamos lo que creamos recien
+    Telefono * telefono = crearTelefono(semaforoTelefono, semaforoLlamadas, tubo);
+    Encargado * encargado = crearEncargado(semaforoTelefono, semaforoLlamadas, tubo, mqdComandas);
+    Cocinero * cocinero = crearCocinero(mqdComandas);
+    // Telefono * telefono = crearTelefono(&puntuacion);
+    // Encargado * encargado = crearEncargado(telefono);
+    // Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
+    // Delivery * delivery = crearDelivery(monitorPedidos, memoria);
 
+    pid_t pid;
 
-  // Se crean los actores del juego donde pasamos lo que creamos recien
-  Telefono * telefono = crearTelefono(semaforoTelefono, semaforoLlamadas, tubo);
-  Encargado * encargado = crearEncargado(semaforoTelefono, semaforoLlamadas, tubo, nqdComandas);
-  Cocinero * cocinero = crearCocinero(nqdComandas);
-  // Telefono * telefono = crearTelefono(&puntuacion);
-  // Encargado * encargado = crearEncargado(telefono);
-  // Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
-  // Delivery * delivery = crearDelivery(monitorPedidos, memoria);
-
-  pid_t pid;
-
-  pid = fork();
-  if(pid == 0) {
-      gestionTelefono(telefono);
-      exit(0);
-  }
+    pid = fork();
+    if(pid == 0) {
+        gestionTelefono(telefono);
+        exit(0);
+    }
     else if(pid > 0) {
-      pid = fork();
-      if(pid == 0){
-          gestionCocinero(telefono);
-          pthread_t hilosCocineros[COCINEROS];
-          for(int i = 0; i < COCINEROS; i++){
-            pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(cocinero));
-            pthread_join(hilosCocineros[i], NULL);
-          }     
-      }
-      /* else if(pid > 0) {
-          pid = fork();
-          if(pid == 0)
-              printf("Soy el hijo numero 3. Los deliverys\n");
-      }  */
-  }
+        pid = fork();
+        if(pid == 0){
+            pthread_t hilosCocineros[COCINEROS];
+            for(int i = 0; i < COCINEROS; i++){
+                pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(cocinero));
+            }
+            for(int i = 0; i < COCINEROS; i++){
+                pthread_join(hilosCocineros[i], NULL);
+            }
+        }
+        /* else if(pid > 0) {
+            pid = fork();
+            if(pid == 0)
+                printf("Soy el hijo numero 3. Los deliverys\n");
+        }  */
+    }
 
-  // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
-  if(pid > 0){
-      close(encargado->tubo[1]);
-      jugar(encargado);
-      close(encargado->tubo[0]);
-  }
-  
-  // Se liberan los semaforos
-  // borrarSemMem(encargado, memoria);
+    // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
+    if(pid > 0){
+        close(encargado->tubo[1]);
+        jugar(encargado);
+        close(encargado->tubo[0]);
+    }
 
-  int status=0;
-  // Semaforo Telefono
-  status = sem_close(encargado->semaforoTelefono);
-  if (!status) {
+    // Se liberan los semaforos
+    // borrarSemMem(encargado, memoria);
+
+    int status=0;
+    // Semaforo Telefono
+    status = sem_close(encargado->semaforoTelefono);
+    if (!status) {
     status = sem_unlink("/semTelefono");
     if (status)
-      perror("sem_unlink()");
-  }
-  else
+        perror("sem_unlink()");
+    }
+    else
     perror("sem_close()");
 
-  status = sem_close(encargado->semaforoLlamadas);
-  if (!status) {
+    status = sem_close(encargado->semaforoLlamadas);
+    if (!status) {
     status = sem_unlink("/semLlamadas");
     if (status)
-      perror("sem_unlink()");
-  }
-  else
+        perror("sem_unlink()");
+    }
+    else
     perror("sem_close()");
 
-  if (!access("./encargadoCocineros",F_OK)) {
-    nqdComandas=mq_close(nqdComandas);
-    if (nqdComandas) {
-      perror("mq_close 1");
-      error=nqdComandas;
+    status = mq_close(encargado->enviar);
+    if (!status) {
+    status = mq_unlink("/encargadoCocineros");
+    if (status) {
+        perror("mq_close()");
     }
-    nqdComandas=mq_unlink("./encargadoCocineros");
-    if (nqdComandas) {
-      perror("mq_close 1");
-      error=nqdComandas;
+    else
+        perror("mq_close 2");
     }
-  }
 
   // Se libera la memoria de los objetos creados
   // free(telefono);
@@ -307,7 +304,7 @@ void atenderPedido(Encargado * encargado, int * terminado) {
     if(encargado->pedidoActual != -1){
         printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %d lista para cargar"RESET_COLOR"\n", 
             encargado->pedidoActual);
-      encargado->puntuacion++;
+        encargado->puntuacion++;
     }
     else{
       printf(BLANCO_T MAGENTA_F"\t\tavisar a los cocineros que cierren la cocina"RESET_COLOR"\n");
@@ -319,7 +316,7 @@ void atenderPedido(Encargado * encargado, int * terminado) {
   }
 }
 
-void cargarPedido (Encargado * encargado, int * terminado) {
+void cargarPedido (Encargado * encargado) {
   char pedido[3];
   // Si no tiene una comanda en la mano, no puede cargar ningun pedido
   if(!encargado->comandaEnMano) {
@@ -329,14 +326,14 @@ void cargarPedido (Encargado * encargado, int * terminado) {
   if(encargado->pedidoActual != ULTIMOPEDIDO){
     snprintf(pedido,3,"%d",encargado->pedidoActual);
     int enviado=mq_send(encargado->enviar,pedido,3,0);
-    if (enviado==-1) {
+    if (enviado == -1) {
       perror("ENCARGADO mq_send");
     }
   }else{
-      for (int i = 0; i < COCINEROS-1; i++){
+      for (int i = 0; i < COCINEROS+1; i++){
         // Si el pedido actual es el ultimo, avisa a cada cocinero que cierren la cocina
         snprintf(pedido,3,"%d",encargado->pedidoActual);
-        int enviado=mq_send(encargado->enviar,pedido,3,0);
+        int enviado=mq_send(encargado->enviar,pedido,TAMMSG,0);
         if (enviado==-1) {
             perror("ENCARGADO mq_send");
         }
@@ -408,24 +405,25 @@ void * gestionCocinero(void * tmp) {
   int * terminado = (int *)(calloc(1, sizeof(int)));
 
   // Ciclo de cocinar pedidos, finaliza cuando el encargado avisa
-  while(*terminado != -1)
+  while(*terminado != -1){
     cocinarPedido(cocinero, terminado);
-
+  }
+    
   free(terminado);
   pthread_exit(NULL);
 }
 
 void cocinarPedido(Cocinero * cocinero, int * terminado) {
-
   // Toma una comanda para empezar a cocinar
   char pedido[3];
-  int recibido=mq_receive(cocinero->recibir,pedido,3,0);
-    if (recibido == -1) {
-      perror("COCINERO mq_receive");
-    }
-    else {
-        printf("\t\t\tPedido %s cocinado", pedido);
-    }
+  int recibido = mq_receive(cocinero->recibir, pedido, TAMMSG, NULL);
+  if (recibido == -1) {
+    //perror("COCINERO mq_receive");
+    //exit(-1);
+  }
+  else{
+    printf("\t\t\tPedido %s cocinado", pedido);
+  }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -455,6 +453,7 @@ Encargado * crearEncargado(sem_t * semaforoTelefono, sem_t * semaforoLlamadas, i
 Cocinero * crearCocinero(mqd_t recibir) {
   Cocinero * cocinero = (Cocinero *)(calloc(1, sizeof(Cocinero)));
   cocinero->recibir = recibir;
+  cocinero->cantCocineros = COCINEROS;
   return cocinero;
 }
 
