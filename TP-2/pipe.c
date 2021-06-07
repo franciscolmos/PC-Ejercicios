@@ -5,17 +5,9 @@
 
 int main(void)
 {
-   int a = -1;
-   int b = 0;
-   int c = 1;
-
-   if(a)
-      printf("-1");
-   
-   if(b)
-      printf("0");
-
-   if(c)
-      printf("1");
+   char cadena [2];
+   snprintf(cadena, 3, "%d", -1);
+   if(!strcmp(cadena, "-1")){
+      printf("EA!\n");
+   }
 }
-

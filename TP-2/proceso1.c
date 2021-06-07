@@ -27,34 +27,27 @@
 #define DELIVERIES 2
 #define CARTA 5
 #define ALARMA 10
-#define TIEMPOLLAMADA 1
 #define ULTIMOPEDIDO -1
 
 int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 
+// ESTRUCTURA DEL TELEFONO
 typedef struct {
   sem_t * semaforoTelefono;
   sem_t * semaforoLlamadas;
   int * tubo;
-}ComTelEnc;
-
-// ESTRUCTURA DEL TELEFONO
-typedef struct {
-  ComTelEnc * comEnc;
 }Telefono;
 
 // ESTRUCTURA DEL ENCARGADO
 typedef struct {
-  ComTelEnc * comTel;
+  Telefono * comTel;
   int puntuacion;
   int comandaEnMano;
-  int pedidoActual;
   float precios[CARTA];
 }Encargado;
 
-ComTelEnc * crearComunicacionTelEnc();
-Telefono * crearTelefono(ComTelEnc *);
-Encargado * crearEncargado(ComTelEnc *);
+Telefono * crearTelefono();
+Encargado * crearEncargado(Telefono *);
 
 /*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
@@ -166,17 +159,14 @@ void mostrarMenu() {
 }
 
 int comenzarJuego(){
-  // Creamos los pipelines entre tel-enc. Tmb los semaforos
-  ComTelEnc * comunicacion = crearComunicacionTelEnc();
-
   // Creamos las colas de mensajes para enc-coc y coc-del
 
   // Creamos una fifo para del-enc. Tmb los semaforos
 
 
   // Se crean los actores del juego donde pasamos lo que creamos recien
-  Telefono * telefono = crearTelefono(comunicacion);
-  Encargado * encargado = crearEncargado(comunicacion);
+  Telefono * telefono = crearTelefono();
+  Encargado * encargado = crearEncargado(telefono);
   // Telefono * telefono = crearTelefono(&puntuacion);
   // Encargado * encargado = crearEncargado(telefono);
   // Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
@@ -253,13 +243,12 @@ void atenderPedido(Encargado * encargado, int * terminado) {
     sem_post(encargado->comTel->semaforoTelefono);
     char numeroPedido[3];
     read(encargado->comTel->tubo[0], numeroPedido, 3);
-    encargado->pedidoActual = atoi(numeroPedido);
     encargado->comandaEnMano = 1; // Flag, encargado debe cargar el pedido antes de atender otro
     usleep(rand()% 50001 + 50000); // Tiempo que tarda en tomar el pedido
 
-    if(encargado->pedidoActual != -1){
-        printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %d lista para cargar"RESET_COLOR"\n", 
-            encargado->pedidoActual);
+    if(strcmp(numeroPedido, "-1")){
+        printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %s lista para cargar"RESET_COLOR"\n", 
+            numeroPedido);
       encargado->puntuacion++;
       sem_post(encargado->comTel->semaforoTelefono); // Cuelga el telefono
     }
@@ -275,7 +264,7 @@ void gestionTelefono(void * tmp){
   Telefono * telefono = (Telefono *) tmp;
   
   // Cerramos el canal de lectura
-  close(telefono->comEnc->tubo[0]); 
+  close(telefono->tubo[0]); 
 
   // Seteamos la alarma del juego e iniciamos el contador
   signal(SIGALRM, TimeOut);
@@ -284,7 +273,7 @@ void gestionTelefono(void * tmp){
   // Ciclo de recibir llamadas, finaliza cuando suena la alarma
   while (timeout){
     // El telefono comienza a recibir llamadas mientras esta colgado
-    sem_wait(telefono->comEnc->semaforoTelefono);
+    sem_wait(telefono->semaforoTelefono);
     usleep(rand() % 750001 + 250000);
     recibirLlamada(telefono);
   }
@@ -293,7 +282,7 @@ void gestionTelefono(void * tmp){
   hacerUltimoPedido(telefono);
 
   // Cerramos el pipe
-  close(telefono->comEnc->tubo[1]);
+  close(telefono->tubo[1]);
 }
 
 void recibirLlamada(Telefono * telefono) {
@@ -301,28 +290,28 @@ void recibirLlamada(Telefono * telefono) {
 
   // El telefono comienza a sonar
   printf(BLANCO_T ROJO_F"\ttelefono sonando"RESET_COLOR"\n");
-  sem_post(telefono->comEnc->semaforoLlamadas);
+  sem_post(telefono->semaforoLlamadas);
   
   // El cliente esta 1 segundo esperando ser atendido
   struct timespec ts;
   clock_gettime(CLOCK_REALTIME, &ts);
   ts.tv_sec += 1;
-  error = sem_timedwait(telefono->comEnc->semaforoTelefono, &ts);
+  error = sem_timedwait(telefono->semaforoTelefono, &ts);
 
   // Si no se atiende a tiempo
   if(error) {
-    error = sem_trywait(telefono->comEnc->semaforoLlamadas);
+    error = sem_trywait(telefono->semaforoLlamadas);
     // En caso de tener la mala suerte que el encargado logra tomar
     // el semaforoLlamadas luego del timedwait y antes del trywait de arriba
     // hay que hacer de cuenta que si atendio el telefono y seguir el curso
     // normal. El encargado hizo post sobre semaforoTelefono.
     if(error) {
-      sem_trywait(telefono->comEnc->semaforoTelefono);
+      sem_trywait(telefono->semaforoTelefono);
       hacerPedido(telefono);
     }
     else {
       printf("\tSe perdio la llamada\n");
-      sem_post(telefono->comEnc->semaforoTelefono);
+      sem_post(telefono->semaforoTelefono);
     }
   }
   else
@@ -335,7 +324,7 @@ void hacerPedido(Telefono * telefono) {
   printf("\tLlamada atendida\n");
   snprintf(numeroPedido, 2, "%d", rand() % CARTA);
   usleep(rand()% 50001 + 50000); // Tiempo que tarda en pedir
-  write(telefono->comEnc->tubo[1], numeroPedido, 2);
+  write(telefono->tubo[1], numeroPedido, 2);
 }
 
 void hacerUltimoPedido(Telefono * telefono) {
@@ -343,12 +332,12 @@ void hacerUltimoPedido(Telefono * telefono) {
 
   // El telefono comienza a sonar
   printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
-  sem_post(telefono->comEnc->semaforoLlamadas);
-  sem_wait(telefono->comEnc->semaforoTelefono);
+  sem_post(telefono->semaforoLlamadas);
+  sem_wait(telefono->semaforoTelefono);
 
   // Envia el ultimo pedido
   snprintf(cadena, 3, "%d", ULTIMOPEDIDO);
-  write(telefono->comEnc->tubo[1], cadena, 3);
+  write(telefono->tubo[1], cadena, 3);
 }
 
 void TimeOut() {
@@ -357,29 +346,22 @@ void TimeOut() {
 
 /*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
-//Creacion de la comunicacion de Telefono y Encargado
-ComTelEnc * crearComunicacionTelEnc() {
-  ComTelEnc * com = (ComTelEnc *)(calloc(1, sizeof(ComTelEnc)));
-  com->semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
-  com->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
-  com->semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
-  com->semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
-  com->tubo = (int *)(calloc(2, sizeof(int)));
-  pipe(com->tubo);
-  return com;
-}
-
 // Creacion de Telefono
-Telefono * crearTelefono(ComTelEnc * com) {
+Telefono * crearTelefono() {
   Telefono * telefono = (Telefono *)(calloc(1, sizeof(Telefono)));
-  telefono->comEnc = com;
+  telefono->semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
+  telefono->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
+  telefono->semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
+  telefono->semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
+  telefono->tubo = (int *)(calloc(2, sizeof(int)));
+  pipe(telefono->tubo);
   return telefono;
 }
 
 // Creacion de Encargado
-Encargado * crearEncargado(ComTelEnc * com) {
+Encargado * crearEncargado(Telefono * tel) {
   Encargado * encargado = (Encargado *)(calloc(1, sizeof(Encargado)));
-  encargado->comTel = com;
+  encargado->comTel = tel;
   for(int i = 0; i < CARTA; i++)
     encargado->precios[i] = 100 * (i+1);
   return encargado;
