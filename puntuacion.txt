@@ -6,3 +6,14 @@ FRancisco: 4
 Francisco: 6
 FRancisco: 4
 Francisco: 7
+Felipe: 7
+Felipe: 5
+Felipe: 7
+Felipe: 7
+Felipe: 8
+Felipe: 6
+Felipe: 3
+Felipe: 5
+Felipe: 7
+Felipe: 6
+Felipe: 7

@@ -29,8 +29,8 @@
 #define COCINEROS 3
 #define DELIVERIES 2
 #define CARTA 5
-#define ALARMA 10
-#define ULTIMOPEDIDO -1
+#define ALARMA 7
+#define ULTIMOPEDIDO "-1"
 
 int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 
@@ -203,17 +203,34 @@ void mostrarMenu() {
 }
 
 int comenzarJuego(){
+  int status = 0;
   // Creamos las colas de mensajes para enc-coc y coc-del
   struct mq_attr attr;  
   attr.mq_flags = 0;  
-  attr.mq_maxmsg = 10;  
-  attr.mq_msgsize = 4;  
+  attr.mq_maxmsg = 10;
+  attr.mq_msgsize = 4;
   attr.mq_curmsgs = 0;
   mqd_t mqdComandasEnc, mqdComandasCoc, mqdPedidosCoc, mqdPedidosDel;
   mqdComandasEnc = mq_open("/encargadoCocineros",O_WRONLY | O_CREAT, 0777, &attr);
+  if(mqdComandasEnc == -1)
+    perror("mq_open_comEnc_failed()");
+  else
+    printf("mq_open_comEnc_ok()\n");
   mqdComandasCoc = mq_open("/encargadoCocineros",O_RDONLY, 0777, &attr);
+  if(mqdComandasCoc == -1)
+    perror("mq_open_comCoc_failed()");
+  else
+    printf("mq_open_comCoc_ok()\n");
   mqdPedidosCoc  = mq_open("/cocinerosDelivery",O_WRONLY | O_CREAT, 0777, &attr);
+  if(mqdPedidosCoc == -1)
+    perror("mq_open_pedCoc_failed()");
+  else
+    printf("mq_open_pedCoc_ok()\n");
   mqdPedidosDel  = mq_open("/cocinerosDelivery",O_RDONLY, 0777, &attr);
+  if(mqdPedidosDel == -1)
+    perror("mq_open_pedDel_failed()");
+  else
+    printf("mq_open_pedDel_ok()\n");
 
   // Creamos una fifo para del-enc. Tmb los semaforos
   int error = 0;
@@ -272,7 +289,6 @@ int comenzarJuego(){
   // Se liberan los semaforos
   // borrarSemMem(encargado, memoria);
 
-  int status=0;
   // Semaforo Telefono
   status = sem_close(encargado->comTel->semaforoTelefono);
   if (!status) {
@@ -292,27 +308,47 @@ int comenzarJuego(){
   else
     perror("sem_close()");
 
+  // Cerramos cola encCoc
   status = mq_close(cocinero->recibir);
+  if(status)
+    perror("mq_close_cocRecibir_failed()");
+  else
+    printf("mq_close_cocRecibir_ok()\n");
   status = mq_close(encargado->enviar);
-  if (!status) {
-    status = mq_unlink("/encargadoCocineros");
-    if (status)
-      perror("mq_close()");
-  }
+  if(status)
+    perror("mq_close_encEnviar_failed()");
+  else
+    printf("mq_close_encEnviar_ok()\n");
+  status = mq_unlink("/encargadoCocineros");
+  if(status)
+    perror("mq_close_encCoc_failed()");
+  else
+    printf("mq_close_encCoc_ok()\n");
 
+  // Cerramos cola cocDel
   status = mq_close(cocinero->enviar);
+  if(status)
+    perror("mq_close_cocEnviar_failed()");
+  else
+    printf("mq_close_cocEnviar_ok()\n");
   status = mq_close(delivery->recibir);
-  if (!status) {
-    status = mq_unlink("/cocinerosDelivery");
-    if (status)
-      perror("mq_close()");
-  }
+  if(status)
+    perror("mq_close_delRecibir_failed()");
+  else
+    printf("mq_close_delRecibir_ok()\n");
+  status = mq_unlink("/cocinerosDelivery");
+  if(status)
+    perror("mq_close_cocDel_failed()");
+  else
+    printf("mq_close_cocDel_ok()\n");
 
+  // Cerramos FIFO
   status = unlink("/tmp/deliveryEncargado");
   if(status) {
     perror("unlink");
   }
 
+  // Semaforo PedidosPorCobrar
   status = sem_close(semaforoPedidosPorCobrar);
   if (!status) {
     status = sem_unlink("/semPedidosPorCobrar");
@@ -367,7 +403,7 @@ void atenderPedido(Encargado * encargado) {
     encargado->comandaEnMano = 1; // Flag, encargado debe cargar el pedido antes de atender otro
     usleep(rand()% 50001 + 50000); // Tiempo que tarda en tomar el pedido
 
-    if(strcmp(encargado->pedidoActual, "-1")){
+    if(strcmp(encargado->pedidoActual, ULTIMOPEDIDO)){
         printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %s lista para cargar"RESET_COLOR"\n", 
             encargado->pedidoActual);
       encargado->puntuacion++;
@@ -387,7 +423,7 @@ void cargarPedido (Encargado * encargado) {
   }
 
   // Deja comanda a los cocineros
-  if(strcmp(encargado->pedidoActual, "-1")) {
+  if(strcmp(encargado->pedidoActual, ULTIMOPEDIDO)) {
     int enviado=mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
     if (enviado == -1)
       perror("ENCARGADO mq_send");
@@ -401,6 +437,32 @@ void cargarPedido (Encargado * encargado) {
     }
   }
   encargado->comandaEnMano = 0;
+}
+
+void cobrarPedido(Encargado * encargado, int * terminado) {
+  // Se fija si hay algun delivery esperando para que le cobre
+  int cobrosPendientes = 0;
+  int error = sem_getvalue(encargado->semaforoPedidosPorCobrar, &cobrosPendientes);
+  if(!error) {
+    if(cobrosPendientes > 0){
+      sem_post(encargado->semaforoDejarDinero);
+      sem_wait(encargado->semaforoCobrarDinero);
+      char pedido[3];
+      read(encargado->fifoOut,pedido,3);
+
+      // Si el delivery le avisa que ya termino, cierra el local
+      if(strcmp(pedido, ULTIMOPEDIDO))
+        printf("\t\t$%.0f guardados de pedido %s\n", encargado->precios[atoi(pedido)], pedido);
+      else {
+        printf("\t\tCerrando local\n");
+        * terminado = -1;
+      }
+      sem_trywait(encargado->semaforoPedidosPorCobrar);
+    }
+  }
+  else{
+    perror("encargado_sem_getvalue()");
+  }
 }
 
 // Hilo Telefono
@@ -465,14 +527,12 @@ void recibirLlamada(Telefono * telefono) {
 void hacerPedido(Telefono * telefono) {
   char numeroPedido [2];
 
-  printf("\tLlamada atendida\n");
   snprintf(numeroPedido, 2, "%d", rand() % CARTA);
   usleep(rand()% 50001 + 50000); // Tiempo que tarda en pedir
   write(telefono->tubo[1], numeroPedido, 2);
 }
 
 void hacerUltimoPedido(Telefono * telefono) {
-  char cadena[3];
 
   // El telefono comienza a sonar
   printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
@@ -480,8 +540,7 @@ void hacerUltimoPedido(Telefono * telefono) {
   sem_wait(telefono->semaforoTelefono);
 
   // Envia el ultimo pedido
-  snprintf(cadena, 3, "%d", ULTIMOPEDIDO);
-  write(telefono->tubo[1], cadena, 3);
+  write(telefono->tubo[1], ULTIMOPEDIDO, 3);
 }
 
 void TimeOut() {
@@ -518,7 +577,7 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
   if (recibido == -1)
     perror("COCINERO mq_receive");
   else{
-    if(strcmp(pedido, "-1")) {
+    if(strcmp(pedido, ULTIMOPEDIDO)) {
       usleep(rand()% 500001 + 1000000); // Tiempo que se demora en cocinar
       pedidoListo(cocinero, pedido);
     }
@@ -527,10 +586,8 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
       * terminado = -1;
       // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
       if(cocinero->cantCocineros == 0) {
-        for(int i = 0; i < DELIVERIES; i++) {
-          pedidoListo(cocinero, "-1");
-          printf("\t\t\tSe va el cocinero\n");
-        }
+        for(int i = 0; i < DELIVERIES; i++)
+          pedidoListo(cocinero, ULTIMOPEDIDO);
       }
     }
   }
@@ -538,9 +595,8 @@ void cocinarPedido(Cocinero * cocinero, int * terminado) {
 
 void pedidoListo(Cocinero * cocinero, char * pedido) {
   // Deja el pedido en el mostrador
-  if(strcmp(pedido, "-1")) {
+  if(strcmp(pedido, ULTIMOPEDIDO)) {
     int enviado=mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
-    printf("\t\t\tPedido %s cargado\n", pedido);
     if (enviado == -1)
       perror("COCINERO mq_send");
   }
@@ -591,9 +647,8 @@ void repartirPedido(Delivery * delivery, int * terminado) {
   if (recibido == -1)
     perror("DELIVERY mq_receive");
   else{
-    if(strcmp(pedido, "-1")) {
+    if(strcmp(pedido, ULTIMOPEDIDO)) {
       usleep(rand()% 500001 + 500000);  // Tiempo que se demora en repartir pedido
-      printf("\t\t\t\tPedido %s repartido\n", pedido);
       avisarCobro(delivery, pedido);
     }
      else {
@@ -601,7 +656,7 @@ void repartirPedido(Delivery * delivery, int * terminado) {
       * terminado = -1;
       // Si es el ultimo delivery que termina, le avisa al encargado
       if(delivery->cantDelivery == 0)
-      avisarCobro(delivery, "-1");
+      avisarCobro(delivery, ULTIMOPEDIDO);
     }
   }
 }
@@ -612,7 +667,7 @@ void avisarCobro(Delivery * delivery, char * pedidoCobrar){
   sem_post(delivery->semaforoPedidosPorCobrar);
 
   // Deja el dinero
-  if(strcmp(pedidoCobrar, "-1")) 
+  if(strcmp(pedidoCobrar, ULTIMOPEDIDO)) 
     printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %s listo para cobrar"RESET_COLOR"\n", pedidoCobrar);  
   // Avisa que se va
   else 
@@ -621,32 +676,6 @@ void avisarCobro(Delivery * delivery, char * pedidoCobrar){
   sem_wait(delivery->semaforoDejarDinero);
   write(delivery->fifoIn, pedidoCobrar, 3); // escribimos en la filo el pedido por cobrar
   sem_post(delivery->semaforoCobrarDinero);
-}
-
-void cobrarPedido(Encargado * encargado, int * terminado) {
-  // Se fija si hay algun delivery esperando para que le cobre
-  int cobrosPendientes = 0;
-  int error = sem_getvalue(encargado->semaforoPedidosPorCobrar, &cobrosPendientes);
-  if(!error) {
-    if(cobrosPendientes > 0){
-      sem_post(encargado->semaforoDejarDinero);
-      sem_wait(encargado->semaforoCobrarDinero);
-      char pedido[3];
-      read(encargado->fifoOut,pedido,3);
-
-      // Si el delivery le avisa que ya termino, cierra el local
-      if(strcmp(pedido, "-1"))
-        printf("\t\t$%.0f guardados de pedido %s\n", encargado->precios[atoi(pedido)], pedido);
-      else {
-        printf("\t\tCerrando local\n");
-        * terminado = -1;
-      }
-      sem_trywait(encargado->semaforoPedidosPorCobrar);
-    }
-  }
-  else{
-    perror("encargado_sem_getvalue()");
-  }
 }
 
 /*----------------------------------------------------------------------------*/
