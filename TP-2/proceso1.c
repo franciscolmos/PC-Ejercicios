@@ -12,6 +12,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <mqueue.h>
+#include <errno.h>
 
 // COLORES
 #define RESET_COLOR  "\x1b[0m"
@@ -47,6 +48,10 @@ typedef struct {
   int puntuacion;
   int comandaEnMano;
   mqd_t enviar;
+  sem_t * semaforoPedidosPorCobrar;
+  sem_t * semaforoDejarDinero;
+  sem_t * semaforoCobrarDinero;
+  int fifoOut;
   float precios[CARTA];
 }Encargado;
 
@@ -60,6 +65,10 @@ typedef struct {
 // ESTRUCTURA DEL DELIVERY
 typedef struct {
   mqd_t recibir;
+  sem_t * semaforoPedidosPorCobrar;
+  sem_t * semaforoDejarDinero;
+  sem_t * semaforoCobrarDinero;
+  int fifoIn;
   int cantDelivery;
 }Delivery;
 
@@ -67,9 +76,9 @@ typedef struct {
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // ACTORES
 Telefono  * crearTelefono();
-Encargado * crearEncargado(Telefono *, mqd_t);
+Encargado * crearEncargado(Telefono *, mqd_t, sem_t *, sem_t *, sem_t *);
 Cocinero  * crearCocinero(mqd_t, mqd_t);
-Delivery  * crearDelivery(mqd_t);
+Delivery  * crearDelivery(mqd_t, sem_t *, sem_t *, sem_t *);
 
 /*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
@@ -91,7 +100,8 @@ void TimeOut();
 
 // FUNCIONES DEL ENCARGADO
 void atenderPedido(Encargado *);
-void cargarPedido(Encargado *, int *);
+void cargarPedido(Encargado *);
+void cobrarPedido(Encargado *, int *);
 
 // FUNCIONES DEL COCINERO
 void hilosCocineros(Cocinero *);
@@ -103,7 +113,7 @@ void pedidoListo(Cocinero *, char *);
 void hilosDelivery(Delivery *);
 void * gestionDelivery(void *);
 void repartirPedido(Delivery *, int *);
-void avisarCobro(Delivery *, int);
+void avisarCobro(Delivery *, char *);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
@@ -160,10 +170,10 @@ void jugar(Encargado * encargado){
       atenderPedido(encargado);
       break;
     case 's':
-      cargarPedido(encargado, terminado);
+      cargarPedido(encargado);
       break;
     case 'd':
-      printf("proximamente\n");
+      cobrarPedido(encargado, terminado);
       break;
     default:
       break;
@@ -206,13 +216,26 @@ int comenzarJuego(){
   mqdPedidosDel  = mq_open("/cocinerosDelivery",O_RDONLY, 0777, &attr);
 
   // Creamos una fifo para del-enc. Tmb los semaforos
+  int error = 0;
+  error = mkfifo("/tmp/deliveryEncargado", 0777);
+  if ((error) && (errno!=EEXIST)) {
+    perror("mkfifo");
+  }
 
+  sem_t * semaforoPedidosPorCobrar = (sem_t *)(calloc(1, sizeof(sem_t)));
+  semaforoPedidosPorCobrar = sem_open("/semPedidosPorCobrar", O_CREAT, O_RDWR, 0);
+
+  sem_t * semaforoDejarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
+  semaforoDejarDinero = sem_open("/semDejarDinero", O_CREAT, O_RDWR, 0);
+
+  sem_t * semaforoCobrarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
+  semaforoCobrarDinero = sem_open("/semCobrarDinero", O_CREAT, O_RDWR, 0);
 
   // Se crean los actores del juego donde pasamos lo que creamos recien
   Telefono  * telefono  = crearTelefono();
-  Encargado * encargado = crearEncargado(telefono, mqdComandasEnc);
+  Encargado * encargado = crearEncargado(telefono, mqdComandasEnc, semaforoPedidosPorCobrar, semaforoDejarDinero, semaforoCobrarDinero);
   Cocinero  * cocinero  = crearCocinero(mqdComandasCoc, mqdPedidosCoc);
-  Delivery  * delivery  = crearDelivery(mqdPedidosDel);
+  Delivery  * delivery  = crearDelivery(mqdPedidosDel, semaforoPedidosPorCobrar, semaforoDejarDinero, semaforoCobrarDinero);
 
   pid_t pid;
 
@@ -237,6 +260,11 @@ int comenzarJuego(){
   // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
   if(pid > 0){
       close(encargado->comTel->tubo[1]);
+      encargado->fifoOut=open("/tmp/deliveryEncargado",O_RDONLY);
+      if (encargado->fifoOut<0) {
+        error=encargado->fifoOut;
+        perror("ENCARGADO fifo open");
+      }
       jugar(encargado);
       close(encargado->comTel->tubo[0]);
   }
@@ -280,6 +308,40 @@ int comenzarJuego(){
       perror("mq_close()");
   }
 
+  status = unlink("/tmp/deliveryEncargado");
+  if(status) {
+    perror("unlink");
+  }
+
+  status = sem_close(semaforoPedidosPorCobrar);
+  if (!status) {
+    status = sem_unlink("/semPedidosPorCobrar");
+    if (status)
+      perror("sem_unlink()");
+  }
+  else
+    perror("sem_close()");
+
+  // Semaforo DejarDinero
+  status = sem_close(semaforoDejarDinero);
+  if (!status) {
+    status = sem_unlink("/semDejarDinero");
+    if (status)
+      perror("sem_unlink()");
+  }
+  else
+    perror("sem_close()");
+
+  // Semaforo CobrarDinero
+  status = sem_close(semaforoCobrarDinero);
+  if (!status) {
+    status = sem_unlink("/semCobrarDinero");
+    if (status)
+      perror("sem_unlink()");
+  }
+  else
+    perror("sem_close()");
+
   // Se libera la memoria de los objetos creados
   // free(telefono);
   // free(encargado);
@@ -317,7 +379,7 @@ void atenderPedido(Encargado * encargado) {
   }
 }
 
-void cargarPedido (Encargado * encargado, int * terminado) {
+void cargarPedido (Encargado * encargado) {
   // Si no tiene una comanda en la mano, no puede cargar ningun pedido
   if(!encargado->comandaEnMano) {
     printf(NEGRO_T BLANCO_F"\t\tatender el telefono antes de cargar un pedido"RESET_COLOR"\n");
@@ -337,7 +399,6 @@ void cargarPedido (Encargado * encargado, int * terminado) {
       if (enviado==-1)
         perror("ENCARGADO mq_send");
     }
-    *terminado = -1;
   }
   encargado->comandaEnMano = 0;
 }
@@ -496,16 +557,22 @@ void pedidoListo(Cocinero * cocinero, char * pedido) {
 
 // Hilo Delivery
 void hilosDelivery(Delivery * delivery) {
-  pthread_t hilosCocineros[DELIVERIES];
+  pthread_t hilosDelivery[DELIVERIES];
   for(int i = 0; i < DELIVERIES; i++) 
-    pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(delivery));
+    pthread_create(&hilosDelivery[i], NULL, gestionDelivery, (void *)(delivery));
   for(int i = 0; i < DELIVERIES; i++)
-    pthread_join(hilosCocineros[i], NULL);
+    pthread_join(hilosDelivery[i], NULL);
 }
 
 void * gestionDelivery(void * tmp) {
   Delivery * delivery = (Delivery *)(tmp);
   int * terminado = (int *)(calloc(1, sizeof(int)));
+
+  // Abrimos la fifo como escritura una vez por cada hilo delivery
+  delivery->fifoIn = open("/tmp/deliveryEncargado",O_WRONLY);
+  if (delivery->fifoIn < 0) {
+    perror("DELIVERY fifo open");
+  }
 
   // Ciclo de repartir pedidos
   while(*terminado != -1)
@@ -518,7 +585,7 @@ void * gestionDelivery(void * tmp) {
 }
 
 void repartirPedido(Delivery * delivery, int * terminado) {
-  // Toma una comanda para empezar a cocinar
+  // Toma una pedido listo para repartir al cliente
   char pedido[5];
   int recibido = mq_receive(delivery->recibir, pedido, 5, NULL);
   if (recibido == -1)
@@ -527,23 +594,59 @@ void repartirPedido(Delivery * delivery, int * terminado) {
     if(strcmp(pedido, "-1")) {
       usleep(rand()% 500001 + 500000);  // Tiempo que se demora en repartir pedido
       printf("\t\t\t\tPedido %s repartido\n", pedido);
-      // avisarCobro(delivery, pedido);
+      avisarCobro(delivery, pedido);
     }
-    else{
+     else {
       delivery->cantDelivery--;
       * terminado = -1;
-      // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
-      if(delivery->cantDelivery == 0) {
-        for(int i = 0; i < DELIVERIES; i++)
-          printf("\t\t\t\tSe va el delivery\n");
-          // pedidoListo(cocinero, "-1");
-      }
+      // Si es el ultimo delivery que termina, le avisa al encargado
+      if(delivery->cantDelivery == 0)
+      avisarCobro(delivery, "-1");
     }
   }
 }
 
-void avisarCobro(Delivery * delivery, int terminado) {
+void avisarCobro(Delivery * delivery, char * pedidoCobrar){
 
+  // Avisa al encargado que esta listo para dejar dinero
+  sem_post(delivery->semaforoPedidosPorCobrar);
+
+  // Deja el dinero
+  if(strcmp(pedidoCobrar, "-1")) 
+    printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %s listo para cobrar"RESET_COLOR"\n", pedidoCobrar);  
+  // Avisa que se va
+  else 
+    printf(BLANCO_T VERDE_F"\t\t\t\tPresione d para cerrar el local"RESET_COLOR"\n");
+  
+  sem_wait(delivery->semaforoDejarDinero);
+  write(delivery->fifoIn, pedidoCobrar, 3); // escribimos en la filo el pedido por cobrar
+  sem_post(delivery->semaforoCobrarDinero);
+}
+
+void cobrarPedido(Encargado * encargado, int * terminado) {
+  // Se fija si hay algun delivery esperando para que le cobre
+  int cobrosPendientes = 0;
+  int error = sem_getvalue(encargado->semaforoPedidosPorCobrar, &cobrosPendientes);
+  if(!error) {
+    if(cobrosPendientes > 0){
+      sem_post(encargado->semaforoDejarDinero);
+      sem_wait(encargado->semaforoCobrarDinero);
+      char pedido[3];
+      read(encargado->fifoOut,pedido,3);
+
+      // Si el delivery le avisa que ya termino, cierra el local
+      if(strcmp(pedido, "-1"))
+        printf("\t\t$%.0f guardados de pedido %s\n", encargado->precios[atoi(pedido)], pedido);
+      else {
+        printf("\t\tCerrando local\n");
+        * terminado = -1;
+      }
+      sem_trywait(encargado->semaforoPedidosPorCobrar);
+    }
+  }
+  else{
+    perror("encargado_sem_getvalue()");
+  }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -561,10 +664,13 @@ Telefono * crearTelefono() {
 }
 
 // Creacion de Encargado
-Encargado * crearEncargado(Telefono * tel, mqd_t cola) {
+Encargado * crearEncargado(Telefono * tel, mqd_t cola, sem_t * semaforoPedidosPorCobrar, sem_t * semaforoDejarDinero, sem_t * semaforoCobrarDinero) {
   Encargado * encargado = (Encargado *)(calloc(1, sizeof(Encargado)));
   encargado->comTel = tel;
   encargado->enviar = cola;
+  encargado->semaforoPedidosPorCobrar = semaforoPedidosPorCobrar;
+  encargado->semaforoDejarDinero = semaforoDejarDinero;
+  encargado->semaforoCobrarDinero = semaforoCobrarDinero;
   for(int i = 0; i < CARTA; i++)
     encargado->precios[i] = 100 * (i+1);
   return encargado;
@@ -580,9 +686,12 @@ Cocinero * crearCocinero(mqd_t recibir, mqd_t enviar) {
 }
 
 // Creacion de Delivery
-Delivery  * crearDelivery(mqd_t recibir) {
+Delivery  * crearDelivery(mqd_t recibir, sem_t * semaforoPedidosPorCobrar, sem_t * semaforoDejarDinero, sem_t * semaforoCobrarDinero) {
   Delivery * delivery = (Delivery *)(calloc(1, sizeof(Delivery)));
   delivery->recibir = recibir;
+  delivery->semaforoPedidosPorCobrar = semaforoPedidosPorCobrar;
+  delivery->semaforoDejarDinero = semaforoDejarDinero;
+  delivery->semaforoCobrarDinero = semaforoCobrarDinero;
   delivery->cantDelivery = DELIVERIES;
   return delivery;
 }

@@ -32,6 +32,39 @@ int main () {
       perror("mq_close 2");
       error -= 1;
     }
+
+    status = mq_unlink("/cocinerosDelivery");
+    if (!status) {
+      printf("cola [cocinerosDelivery] borrado!\n");
+    }else{
+      perror("mq_close()");
+    }
+
+    status = unlink("/deliveryEncargado");
+    if (!status) {
+      printf("fifo [deliveryEncargado] borrada!\n");
+    }else{
+      perror("unlink");
+    }
+
+    status = sem_unlink("/semDejarDinero");
+    if (!status)
+      perror("sem_unlink()");
+    else
+      perror("unlink");
+    
+    status = sem_unlink("/semCobrarDinero");
+    if (!status)
+      perror("sem_unlink()");
+    else
+      perror("unlink");
+
+    status = sem_unlink("/semPedidosPorCobrar");
+    if (!status)
+      perror("sem_unlink()");
+    else
+      perror("unlink");
+    
   
   return error;
 }
