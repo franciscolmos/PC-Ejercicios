@@ -12,6 +12,8 @@ int main(void) {
    char nomSemaforo [] = "sem1";
    sem_t * semaforo = crearSemaforo(nomSemaforo, 1);
    borrarSemaforo(semaforo, nomSemaforo);
+
+   printf("Read:%d - Write:%d - RdWr:%d - Create:%d\n", O_RDONLY, O_WRONLY, O_RDWR, O_CREAT);
    return 1;
 }
 
