@@ -120,8 +120,8 @@ void avisarCobro(Delivery *, char *);
 
 /*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DE TERMINACION---------------------------*/
-void borrarSemaforo(char *);
-void borrarCola(char *);
+void borrarSemaforo(sem_t *, char *);
+void borrarCola(mqd_t, char *);
 void borrarFifo(char *);
 
 /*-----------------------------------------------------------------------------*/
@@ -214,8 +214,8 @@ void mostrarMenu() {
 int comenzarJuego(){
   int status = 0;
   // Creamos las colas de mensajes para enc-coc y coc-del
-  struct mq_attr attr;  
-  attr.mq_flags = 0;  
+  struct mq_attr attr;
+  attr.mq_flags = 0;
   attr.mq_maxmsg = 10;
   attr.mq_msgsize = 4;
   attr.mq_curmsgs = 0;
@@ -248,30 +248,32 @@ int comenzarJuego(){
   Cocinero  * cocinero  = crearCocinero(mqdComandasCoc, mqdPedidosCoc);
   Delivery  * delivery  = crearDelivery(mqdPedidosDel, comDel);
 
+  // CREAMOS LOS PROCESOS
   pid_t pid;
 
   pid = fork();
   if(pid == 0) {
-    gestionTelefono(telefono);
+    gestionTelefono(telefono); // TELEFONO
     exit(0);
   }
 
   pid = fork();
   if(pid == 0){
-    hilosCocineros(cocinero);
+    hilosCocineros(cocinero); // COCINEROS
     exit(0);
   }
 
   pid = fork();
   if(pid == 0){
-    hilosDelivery(delivery);
+    hilosDelivery(delivery); // DELIVERY
     exit(0);
   }
 
   // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
   if(pid > 0){
+    // iniciarEncargado(encargado);
     close(encargado->comTel->tubo[1]);
-    encargado->comDel->fifo=open("/tmp/deliveryEncargado",O_RDONLY);
+    encargado->comDel->fifo = open("/tmp/deliveryEncargado",O_RDONLY);
     if (encargado->comDel->fifo<0)
       perror("fifo_open_enc()");
     jugar(encargado);
@@ -306,16 +308,18 @@ int comenzarJuego(){
     perror("mq_close_cocRecibir_failed()");
   else
     printf("mq_close_cocRecibir_ok()\n");
+
   status = mq_close(encargado->enviar);
   if(status)
     perror("mq_close_encEnviar_failed()");
   else
     printf("mq_close_encEnviar_ok()\n");
+
   status = mq_unlink("/encargadoCocineros");
   if(status)
-    perror("mq_close_encCoc_failed()");
+    perror("mq_unlink_encCoc_failed()");
   else
-    printf("mq_close_encCoc_ok()\n");
+    printf("mq_unlink_encCoc_ok()\n");
 
   // Cerramos cola cocDel
   status = mq_close(cocinero->enviar);
@@ -332,15 +336,16 @@ int comenzarJuego(){
 
   status = mq_unlink("/cocinerosDelivery");
   if(status)
-    perror("mq_close_cocDel_failed()");
+    perror("mq_unlink_cocDel_failed()");
   else
-    printf("mq_close_cocDel_ok()\n");
+    printf("mq_unlink_cocDel_ok()\n");
 
   // Cerramos FIFO
   status = unlink("/tmp/deliveryEncargado");
-  if(status) {
-    perror("unlink");
-  }
+  if(status)
+    perror("fifo_unlink_failed()");
+  else
+    printf("fifo_unlink_ok()\n");
 
   // Semaforo PedidosPorCobrar
   status = sem_close(encargado->comDel->semaforoPedidosPorCobrar);
