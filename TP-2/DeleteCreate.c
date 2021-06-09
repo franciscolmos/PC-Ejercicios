@@ -1,27 +1,4 @@
-#include<stdio.h>
-#include<string.h>
-#include<stdlib.h>
-#include<time.h>
-#include <mqueue.h>
-#include <semaphore.h>
-
-sem_t * crearSemaforo(char *, int);
-void borrarSemaforo(sem_t *, char *);
-mqd_t crearColaMensaje(char *, int, int);
-void borrarColaMensaje(mqd_t, char *, int);
-
-int main(void) {
-   char nomSemaforo [] = "sem1";
-   char nomCola [] = "encargadoCocineros";
-   sem_t * semaforo = crearSemaforo(nomSemaforo, 1);
-   borrarSemaforo(semaforo, nomSemaforo);
-
-   printf("Read:%d - Write:%d - RdWr:%d - Create:%d\n", O_RDONLY, O_WRONLY, O_RDWR, O_CREAT);
-   mqd_t mqdComandasEnc = crearColaMensaje(nomCola, 1, 1); // segundo parámetro si es  1: es create y open, si es  0 no es create es solo open. El tercer parámetro es el tipo de apertura: si es 1 es de tipo escritura y si es  0 es de tipo lectura
-   borrarColaMensaje(mqdComandasEnc, nomCola, 1); // el último parámetro es si se debe hacer unlink o no. Si se manda 1 entonces se va hacer unlink y close, caso contrario solo se hace close.
-
-   return 1;
-}
+#include "DeleteCreate.h"
 
 sem_t * crearSemaforo(char * nomSemaforo, int valorInicio) {
 
@@ -70,7 +47,7 @@ void borrarSemaforo(sem_t * semaforo, char * nomSemaforo) {
       perror(closeF);
 }
 
-mqd_t crearColaMensaje(char * nomCola, int create, int tipoApertura){
+mqd_t crearColaMensaje(char * nomCola, int create, int tipoApertura, char * identificador){
    mqd_t temp;
    struct mq_attr attr;
    attr.mq_flags = 0;
@@ -82,7 +59,9 @@ mqd_t crearColaMensaje(char * nomCola, int create, int tipoApertura){
    char open [50] = "mq_open_";
    char openF [50];
    strcat(open, nomCola);
+   strcat(open, identificador);
    strcpy(openF, open);
+   strcat(openF, identificador);
    strcat(open, "_ok()");
    strcat(openF, "_failed()");
 
@@ -166,4 +145,3 @@ void borrarColaMensaje(mqd_t cola, char * nomCola, int unlink){
          perror(closeF);
    }
 }
-
