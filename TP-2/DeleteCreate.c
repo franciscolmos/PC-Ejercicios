@@ -1,10 +1,11 @@
 #include "DeleteCreate.h"
 
-sem_t * crearSemaforo(char * nomSemaforo, int valorInicio) {
-
+sem_t * crearSemaforo(char * nomSemaforo, char * identificador, int valorInicio) {
    char open [50] = "sem_open_";
    char openF [50];
    strcat(open, nomSemaforo);
+   strcat(open, "_");
+   strcat(open, identificador);
    strcpy(openF, open);
    strcat(open, "_ok()");
    strcat(openF, "_failed()");
@@ -19,129 +20,122 @@ sem_t * crearSemaforo(char * nomSemaforo, int valorInicio) {
    return semaforo;
 }
 
-void borrarSemaforo(sem_t * semaforo, char * nomSemaforo) {
-   char close [50] = "sem_close_";
-   char closeF [50];
-   strcat(close, nomSemaforo);
-   strcpy(closeF, close);
-   strcat(close, "_ok()");
-   strcat(closeF, "_failed()");
-
-   char unlink [50] = "sem_unlink_";
-   char unlinkF [50];
-   strcat(unlink, nomSemaforo);
-   strcpy(unlinkF, unlink);
-   strcat(unlink, "_ok()");
-   strcat(unlinkF, "_failed()");
-
-   int status = sem_close(semaforo);
-   if(!status) {
-      printf("%s\n", close);
-      status = sem_unlink(nomSemaforo);
-         if(!status)
-            printf("%s\n", unlink);
-         else
-            perror(unlinkF);
-   }
-   else
-      perror(closeF);
-}
-
-mqd_t crearColaMensaje(char * nomCola, int create, int tipoApertura, char * identificador){
+mqd_t crearColaMensaje(char * nomCola, char * identificador, int apertura){
    mqd_t temp;
+
    struct mq_attr attr;
    attr.mq_flags = 0;
    attr.mq_maxmsg = 10;
    attr.mq_msgsize = 4;
    attr.mq_curmsgs = 0;
+
    char nomColaConBarra [50] = "/";
    strcat(nomColaConBarra, nomCola);
    char open [50] = "mq_open_";
    char openF [50];
    strcat(open, nomCola);
+   strcat(open, "_");
    strcat(open, identificador);
    strcpy(openF, open);
    strcat(openF, identificador);
    strcat(open, "_ok()");
    strcat(openF, "_failed()");
 
-   if(create){
-      switch (tipoApertura)
-      {
-      case 1:
-         temp = mq_open(nomColaConBarra , O_WRONLY | O_CREAT, 0777, &attr);
-         if(temp == -1)
-            perror(openF);
-         else
-            printf("%s\n",open);
-         break;
-      case 0:
-         temp = mq_open(nomColaConBarra , O_RDONLY | O_CREAT, 0777, &attr);
-         if(temp == -1)
-            perror(openF);
-         else
-            printf("%s",open);
-         break;
-      default:
-         break;
-      }
-   }else{
-       switch (tipoApertura)
-      {
-      case 1:
-         temp = mq_open(nomColaConBarra , O_WRONLY, 0777, &attr);
-         if(temp == -1)
-            perror(openF);
-         else
-            printf("%s",open);
-         break;
-      case 0:
-         temp = mq_open(nomColaConBarra , O_RDONLY, 0777, &attr);
-         if(temp == -1)
-            perror(openF);
-         else
-            printf("%s",open);
-         break;
-      default:
-         break;
-      }
-   }
+   temp = mq_open(nomColaConBarra , apertura, 0777, &attr);
+   if(temp == -1)
+      perror(openF);
+   else
+      printf("%s\n",open);
+      
    return temp;
 }
 
-void borrarColaMensaje(mqd_t cola, char * nomCola, int unlink){
-   char nomColaConBarra [50] = "/";
-   strcat(nomColaConBarra, nomCola);
-   char close [50] = "mq_close_";
+int cerrarSemaforo(sem_t * semaforo, char * nomSemaforo, char * identificador) {
+   char close [50] = "sem_close_";
    char closeF [50];
-   strcat(close, nomCola);
+   strcat(close, nomSemaforo);
+   strcat(close, "_");
+   strcat(close, identificador);
    strcpy(closeF, close);
    strcat(close, "_ok()");
    strcat(closeF, "_failed()");
 
-   if(unlink){
-      char unlink [50] = "mq_unlink_";
-      char unlinkF [50];
-      strcat(unlink, nomCola);
-      strcpy(unlinkF, unlink);
-      strcat(unlink, "_ok()");
-      strcat(unlinkF, "_failed()");
-      int status = mq_close(cola);
-      if(!status) {
-         printf("%s\n", close);
-         status = mq_unlink(nomColaConBarra);
-            if(!status)
-               printf("%s\n", unlink);
-            else
-               perror(unlinkF);
-      }
+   int status = sem_close(semaforo);
+   if(status) {
+      perror(closeF);
+      return -1;
+   }
+   else {
+      printf("%s\n", close);
+      return 0;
+   }
+}
+
+void borrarSemaforo(sem_t * semaforo, char * nomSemaforo, char * identificador) {
+   char nomSemaforoConBarra [50] = "/";
+   strcat(nomSemaforoConBarra, nomSemaforo);
+   char unlink [50] = "sem_unlink_";
+   char unlinkF [50];
+   strcat(unlink, nomSemaforo);
+   strcat(unlink, "_");
+   strcat(unlink  , identificador);
+   strcpy(unlinkF, unlink);
+   strcat(unlink, "_ok()");
+   strcat(unlinkF, "_failed()");
+
+   int error = cerrarSemaforo(semaforo, nomSemaforo, identificador);
+   if(error)
+      return;
+   else {
+      error = sem_unlink(nomSemaforoConBarra);
+         if(error)
+            perror(unlinkF);
+         else
+            printf("%s\n", unlink);
+   }
+}
+
+int cerrarColaMensaje(mqd_t cola, char * nomCola, char * identificador) {
+   char close [50] = "mq_close_";
+   char closeF [50];
+   strcat(close, nomCola);
+   strcat(close, "_");
+   strcat(close, identificador);
+   strcpy(closeF, close);
+   strcat(close, "_ok()");
+   strcat(closeF, "_failed()");
+
+   int status = mq_close(cola);
+   if(status) {
+      perror(closeF);
+      return -1;
+   }
+   else {
+      printf("%s\n", close);
+      return 0;
+   }
+}
+
+void borrarColaMensaje(mqd_t cola, char * nomCola, char * identificador){
+   char nomColaConBarra [50] = "/";
+   strcat(nomColaConBarra, nomCola);
+   char unlink [50] = "mq_unlink_";
+   char unlinkF [50];
+   strcat(unlink, nomCola);
+   strcat(unlink, "_");
+   strcat(unlink, identificador);
+   strcpy(unlinkF, unlink);
+   strcat(unlink, "_ok()");
+   strcat(unlinkF, "_failed()");
+
+   int error = cerrarColaMensaje(cola, nomCola, identificador);
+   if(error)
+      return;
+   else {
+      error = mq_unlink(nomColaConBarra);
+      if(error)
+         perror(unlinkF);
       else
-         perror(closeF);
-   }else{
-      int status = mq_close(cola);
-      if(!status)
-         printf("%s\n", close);
-      else
-         perror(closeF);
+         printf("%s\n", unlink);
    }
 }

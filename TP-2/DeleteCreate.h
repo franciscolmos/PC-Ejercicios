@@ -8,9 +8,11 @@
 #include <mqueue.h>
 #include <semaphore.h>
 
-sem_t * crearSemaforo(char *, int);
-void borrarSemaforo(sem_t *, char *);
-mqd_t crearColaMensaje(char *, int, int, char *);
-void borrarColaMensaje(mqd_t, char *, int);
+sem_t * crearSemaforo(char *, char *, int);
+mqd_t crearColaMensaje(char *, char *, int);
+int cerrarSemaforo(sem_t *, char *, char *);
+void borrarSemaforo(sem_t *, char *, char *);
+int cerrarColaMensaje(mqd_t, char *, char *);
+void borrarColaMensaje(mqd_t, char *, char *);
 
 #endif
