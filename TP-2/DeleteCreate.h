@@ -19,6 +19,6 @@ void  borrarSemaforo(sem_t *, char *, char *);
 int   cerrarColaMensaje(mqd_t, char *, char *);
 void  borrarColaMensaje(mqd_t, char *, char *);
 int   crearFIFO(char *);
-void  borrarFIFO(char *);
+void  borrarFIFO(char *, int);
 
 #endif

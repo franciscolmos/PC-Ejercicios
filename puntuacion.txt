@@ -43,3 +43,5 @@ Francisco: 4
 Francisco: 5
 Francisco: 7
 Jugador1: 4
+Francisco: 4
+Francisco: 6

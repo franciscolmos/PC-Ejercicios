@@ -161,8 +161,14 @@ int crearFIFO(char * nomFIFO){
    return tempFIFO;
 }
 
-void borrarFIFO(char * nomFIFO){
+void borrarFIFO(char * nomFIFO, int fifo){
    char nomFIFOBarra [50] = "/tmp/";
+   char closeS [50] = "FIFO_close_";
+   char closeF [50];
+   strcat(closeS, nomFIFO);
+   strcpy(closeF, closeS);
+   strcat(closeS, "_ok()");
+   strcat(closeF, "_failed()");
    strcat(nomFIFOBarra, nomFIFO);
    char unlinkS [50] = "FIFO_unlink_";
    char unlinkF [50];
@@ -170,11 +176,17 @@ void borrarFIFO(char * nomFIFO){
    strcpy(unlinkF, unlinkS);
    strcat(unlinkS, "_ok()");
    strcat(unlinkF, "_failed()");
-   int status = unlink(nomFIFOBarra);
+   int status = close(fifo);
+   if(!status){
+      printf("%s\n",  closeS);
+      status = unlink(nomFIFOBarra);
    if(status)
       perror(unlinkF);
    else
       printf("%s\n", unlinkS);
       printf("----------------------------------------------------\n\n");
+   }else{
+      perror(closeF);
+   }
 }
 

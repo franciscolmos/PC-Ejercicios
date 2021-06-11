@@ -266,7 +266,7 @@ int comenzarJuego(){
   borrarColaMensaje(cocinero->enviar , "cocinerosDelivery",  "coc");
 
   // Cerramos FIFO
-  borrarFIFO("deliveryEncargado");
+  borrarFIFO("deliveryEncargado", encargado->comDel->fifo);
 
   // Se libera la memoria de los objetos creados
   free(telefono);
