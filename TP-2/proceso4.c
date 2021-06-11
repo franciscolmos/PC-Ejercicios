@@ -26,6 +26,8 @@
 #define MAGENTA_F    "\x1b[45m"
 #define BLANCO_T     "\x1b[37m"
 #define BLANCO_F     "\x1b[47m"
+#define CYAN_T       "\x1b[36m"
+#define CYAN_F       "\x1b[46m"
 
 // DATOS DEL JUEGO
 #define ENCARGADOS 1
@@ -209,7 +211,6 @@ void mostrarMenu() {
 }
 
 int comenzarJuego(){
-  int status = 0;
 
   // Creamos las colas de mensajes para enc-coc y coc-del
   mqd_t mqdComandasEnc = crearColaMensaje("encargadoCocineros", "enc", O_WRONLY | O_CREAT);
@@ -257,12 +258,6 @@ int comenzarJuego(){
 
   // Borramos semaforos de telefono
   borrarSemaforo(encargado->comTel->semaforoTelefono, "semTelefono",  "enc");
-  // borrarSemaforo(encargado->comTel->semaforoLlamadas, "semLlamadas",  "enc");
-
-  // Borramos semaforos de delivery
-  // borrarSemaforo(encargado->comDel->semaforoPedidosPorCobrar, "semPedidosPorCobrar",  "enc");
-  // borrarSemaforo(encargado->comDel->semaforoDejarDinero,      "semDejarDinero",       "enc");
-  // borrarSemaforo(encargado->comDel->semaforoCobrarDinero,     "semCobrarDinero",      "enc");
 
   // Cerramos las colas de mensajes
   cerrarColaMensaje(cocinero->recibir, "encargadoCocineros", "coc");
@@ -271,11 +266,7 @@ int comenzarJuego(){
   borrarColaMensaje(cocinero->enviar , "cocinerosDelivery",  "coc");
 
   // Cerramos FIFO
-  status = unlink("/tmp/deliveryEncargado");
-  if(status)
-    perror("fifo_unlink_failed()");
-  else
-    printf("fifo_unlink_ok()\n");
+  borrarFIFO("deliveryEncargado");
 
   // Se libera la memoria de los objetos creados
   free(telefono);
@@ -288,31 +279,6 @@ int comenzarJuego(){
 
 // Hilo Encargado
 void atenderPedido(Encargado * encargado) {
-  // // Si tiene una comanda en la mano, no puede atender el telefono
-  // if(encargado->comandaEnMano) {
-  //   printf(NEGRO_T BLANCO_F"\t\tdejar comanda antes de atender otro pedido"RESET_COLOR"\n");
-  //   return;
-  // }
-
-  // // Verifica si hay alguna llamada entrante
-  // int error = sem_trywait(encargado->comTel->semaforoLlamadas);
-  // if(!error) {
-  //   sem_post(encargado->comTel->semaforoTelefono);
-  //   read(encargado->comTel->tubo[0], encargado->pedidoActual, 3);
-  //   encargado->comandaEnMano = 1; // Flag, encargado debe cargar el pedido antes de atender otro
-  //   usleep(rand()% 50001 + 50000); // Tiempo que tarda en tomar el pedido
-
-  //   if(strcmp(encargado->pedidoActual, ULTIMOPEDIDO)){
-  //     printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %s lista para cargar"RESET_COLOR"\n", 
-  //            encargado->pedidoActual);
-  //     encargado->puntuacion++;
-  //     sem_post(encargado->comTel->semaforoTelefono); // Cuelga el telefono
-  //   }
-  //   else {
-  //     printf(BLANCO_T MAGENTA_F"\t\tavisar a los cocineros que cierren la cocina"RESET_COLOR"\n");
-  //   }
-  // }
-
   if(encargado->comandaEnMano || strcmp(encargado->pedidoActual, ULTIMOPEDIDO) == 0) {
     printf(NEGRO_T BLANCO_F"\t\tdejar comanda antes de atender otro pedido"RESET_COLOR"\n");
     return;
@@ -358,37 +324,21 @@ void cargarPedido (Encargado * encargado) {
 }
 
 void cobrarPedido(Encargado * encargado, int * terminado) {
-  // Se fija si hay algun delivery esperando para que le cobre
-  // int cobrosPendientes = 0;
-  // int error = sem_getvalue(encargado->comDel->semaforoPedidosPorCobrar, &cobrosPendientes);
-  // if(!error) {
-  //   if(cobrosPendientes > 0){
-  //     sem_post(encargado->comDel->semaforoDejarDinero);
-  //     sem_wait(encargado->comDel->semaforoCobrarDinero);
       char pedido[3];
       read(encargado->comDel->fifo,pedido,3);
 
       // Si el delivery le avisa que ya termino, cierra el local
       if(strcmp(pedido, ULTIMOPEDIDO))
-        printf("\t\t$%.0f guardados de pedido %s\n", encargado->precios[atoi(pedido)], pedido);
+        printf(NEGRO_T CYAN_F"\t\t$%.0f guardados de pedido %s"RESET_COLOR"\n", encargado->precios[atoi(pedido)], pedido);
       else {
         printf("\t\tCerrando local\n");
         * terminado = -1;
       }
-      // sem_trywait(encargado->comDel->semaforoPedidosPorCobrar);
-    // }
-  // }
-  // else{
-  //   perror("encargado_sem_getvalue()");
-  // }
 }
 
 // Hilo Telefono
 void gestionTelefono(void * tmp){
   Telefono * telefono = (Telefono *) tmp;
-  
-  // Cerramos el canal de lectura
-  // close(telefono->tubo[0]); 
 
   // Seteamos la alarma del juego e iniciamos el contador
   signal(SIGALRM, TimeOut);
@@ -410,36 +360,6 @@ void gestionTelefono(void * tmp){
 }
 
 void recibirLlamada(Telefono * telefono) {
-  // int error = 0;
-
-  // // El telefono comienza a sonar
-  // printf(BLANCO_T ROJO_F"\ttelefono sonando"RESET_COLOR"\n");
-  // sem_post(telefono->semaforoLlamadas);
-  
-  // // El cliente esta 1 segundo esperando ser atendido
-  // struct timespec ts;
-  // clock_gettime(CLOCK_REALTIME, &ts);
-  // ts.tv_sec += 1;
-  // error = sem_timedwait(telefono->semaforoTelefono, &ts);
-
-  // // Si no se atiende a tiempo
-  // if(error) {
-  //   error = sem_trywait(telefono->semaforoLlamadas);
-  //   // En caso de tener la mala suerte que el encargado logra tomar
-  //   // el semaforoLlamadas luego del timedwait y antes del trywait de arriba
-  //   // hay que hacer de cuenta que si atendio el telefono y seguir el curso
-  //   // normal. El encargado hizo post sobre semaforoTelefono.
-  //   if(error) {
-  //     sem_trywait(telefono->semaforoTelefono);
-  //     hacerPedido(telefono);
-  //   }
-  //   else {
-  //     printf("\tSe perdio la llamada\n");
-  //     sem_post(telefono->semaforoTelefono);
-  //   }
-  // }
-  // else
-  //   hacerPedido(telefono);
 
   // Entra pedido
   printf(BLANCO_T ROJO_F"\ttelefono sonando"RESET_COLOR"\n");
@@ -617,16 +537,7 @@ void avisarCobro(Delivery * delivery, char * pedidoCobrar){
 // Creacion de comunicacion entre encargado y delivery
 comDel * crearComDel() {
   comDel * com = (comDel *)(calloc(1, sizeof(comDel)));
-
-  com->fifo = mkfifo("/tmp/deliveryEncargado", 0777);
-  if ((com->fifo) && (errno!=EEXIST)) {
-    perror("mkfifo");
-  }
-
-  // com->semaforoPedidosPorCobrar = crearSemaforo("semPedidosPorCobrar",  "comDel", 0);
-  // com->semaforoDejarDinero      = crearSemaforo("semDejarDinero",       "comDel", 0);
-  // com->semaforoCobrarDinero     = crearSemaforo("semCobrarDinero",      "comDel", 0);
-
+  com->fifo = crearFIFO("deliveryEncargado");
   return com;
 }
 

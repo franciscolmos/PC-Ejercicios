@@ -36,3 +36,9 @@ Felipe: 5
 Felipe: 5
 Felipe: 1
 Felipe: 7
+Francisco: 5
+Felipe: 4
+Francisco: 4
+Francisco: 4
+Francisco: 5
+Francisco: 7
