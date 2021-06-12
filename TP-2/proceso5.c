@@ -218,28 +218,36 @@ int comenzarJuego(){
 
   // Se crean los actores del juego donde pasamos lo que creamos recien
   comDel    * comDel    = crearComDel();
+  printf("Creado comDel\n");
   Telefono  * telefono  = crearTelefono();
+  printf("Creado telefono\n");
   Encargado * encargado = crearEncargado(telefono, mqdComandasEnc, comDel);
+  printf("Creado encargado\n");
   Cocinero  * cocinero  = crearCocinero(mqdComandasCoc, mqdPedidosCoc);
+  printf("Creado cocinero\n");
   Delivery  * delivery  = crearDelivery(mqdPedidosDel, comDel);
+  printf("Creado delivery\n");
 
   // CREAMOS LOS PROCESOS
   pid_t pid;
 
   pid = fork();
   if(pid == 0) {
+    printf("Inicia gestion telefono\n");
     gestionTelefono(telefono); // TELEFONO
     exit(0);
   }
 
   pid = fork();
   if(pid == 0){
+    printf("Inicia gestion cocinero\n");
     hilosCocineros(cocinero); // COCINEROS
     exit(0);
   }
 
   pid = fork();
   if(pid == 0){
+    printf("Inicia gestion delivery\n");
     hilosDelivery(delivery); // DELIVERY
     exit(0);
   }
@@ -250,6 +258,7 @@ int comenzarJuego(){
     encargado->comDel->fifo = open("/tmp/deliveryEncargado",O_RDONLY);
     if (encargado->comDel->fifo<0)
       perror("fifo_open_enc()");
+    printf("Inicia gestion encargado\n");
     jugar(encargado);
     close(encargado->comTel->tubo[0]);
   }
@@ -319,6 +328,8 @@ void cargarPedido (Encargado * encargado) {
       int enviado=mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
       if (enviado==-1)
         perror("ENCARGADO mq_send");
+      else
+        printf("Encargado_ultimoPedido_entregado()\n");
     }
   }
   encargado->comandaEnMano = 0;
@@ -362,6 +373,7 @@ void gestionTelefono(void * tmp){
   hacerUltimoPedido(telefono);
 
   // Cerramos el pipe
+  close(telefono->tubo[0]);
   close(telefono->tubo[1]);
 }
 
@@ -401,6 +413,7 @@ void hacerUltimoPedido(Telefono * telefono) {
 
   // Envia el ultimo pedido
   write(telefono->tubo[1], ULTIMOPEDIDO, 3);
+  printf("Telefono_ultimoPedido_entregado()\n");
 }
 
 void TimeOut() {
@@ -464,10 +477,11 @@ void pedidoListo(Cocinero * cocinero, char * pedido) {
       int enviado = mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
       if (enviado == -1)
         perror("COCINERO mq_send");
+      else
+        printf("Cocinero_ultimoPedido_entregado()\n");
     }
   }
 }
-
 
 // Hilo Delivery
 void hilosDelivery(Delivery * delivery) {
@@ -522,11 +536,13 @@ void repartirPedido(Delivery * delivery, int * terminado) {
 void avisarCobro(Delivery * delivery, char * pedidoCobrar){
 
   // Deja el dinero
-  if(strcmp(pedidoCobrar, ULTIMOPEDIDO)) 
-    printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %s listo para cobrar"RESET_COLOR"\n", pedidoCobrar);  
+  if(strcmp(pedidoCobrar, ULTIMOPEDIDO))
+    printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %s listo para cobrar"RESET_COLOR"\n", pedidoCobrar);
   // Avisa que se va
-  else 
+  else {
+    printf("Delivery_ultimoPedido_entregado()\n");
     printf(BLANCO_T VERDE_F"\t\t\t\tPresione d para cerrar el local"RESET_COLOR"\n");
+  }
 
   write(delivery->comDel->fifo, pedidoCobrar, 3);
 
