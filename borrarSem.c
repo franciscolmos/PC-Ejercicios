@@ -13,23 +13,21 @@ int main () {
     if (!status)
       printf("Semaforo [semTelefono] borrado!\n");
     else {
-      perror("sem_unlink()");
+      perror("semTelefono_unlink()");
       error -= 1;
     }
 
-    status = sem_unlink("/semLlamadas");
+    status = sem_unlink("/semCobrarPedidos");
     if (!status)
-      printf("Semaforo [semLlamadas] borrado!\n");
-    else {
-      perror("sem_unlink()");
-      error -= 1;
-    }
+      printf("Semaforo [semCobrarPedidos] borrado!\n");
+    else
+      perror("semCobrarPedidos_unlink");
 
     status = mq_unlink("/encargadoCocineros");
     if (!status) {
       printf("cola [encargadoCocineros] borrado!\n");
     }else{
-      perror("mq_close 2");
+      perror("mq_encargadoCocineros");
       error -= 1;
     }
 
@@ -37,33 +35,14 @@ int main () {
     if (!status) {
       printf("cola [cocinerosDelivery] borrado!\n");
     }else{
-      perror("mq_close()");
+      perror("mq_cocinerosDelivery");
     }
-
-    status = unlink("/deliveryEncargado");
-    if (!status) {
-      printf("fifo [deliveryEncargado] borrada!\n");
-    }else{
-      perror("unlink");
-    }
-
-    status = sem_unlink("/semDejarDinero");
-    if (!status)
-      perror("sem_unlink()");
-    else
-      perror("unlink");
     
-    status = sem_unlink("/semCobrarDinero");
+    status = unlink("/tmp/deliveryEncargado");
     if (!status)
-      perror("sem_unlink()");
+      printf("FIFO [deliveryEncargado] borrada!\n");
     else
-      perror("unlink");
-
-    status = sem_unlink("/semPedidosPorCobrar");
-    if (!status)
-      perror("sem_unlink()");
-    else
-      perror("unlink");
+      perror("FIFO_unlink");
     
   
   return error;

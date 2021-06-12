@@ -16,8 +16,6 @@ sem_t * crearSemaforo(char * nomSemaforo, char * identificador, int valorInicio)
       perror(openF);
    else
       printf("%s\n", open);
-      printf("----------------------------------------------------\n\n");
-
    return semaforo;
 }
 
@@ -67,7 +65,6 @@ int cerrarSemaforo(sem_t * semaforo, char * nomSemaforo, char * identificador) {
       return -1;
    }
    else {
-      printf("\n\n----------------------------------------------------\n");
       printf("%s\n", close);
       return 0;
    }
@@ -153,40 +150,26 @@ int crearFIFO(char * nomFIFO){
    strcat(openF, "_failed()");
 
    int tempFIFO = mkfifo(nomFIFOBarra, 0777);
-   if ((tempFIFO) && (errno!=EEXIST)) {
+   if ((tempFIFO) && (errno!=EEXIST))
       perror(openF);
-   }
    else
       printf("%s\n", open);
    return tempFIFO;
 }
 
-void borrarFIFO(char * nomFIFO, int fifo){
+void borrarFIFO(char * nomFIFO){
    char nomFIFOBarra [50] = "/tmp/";
-   char closeS [50] = "FIFO_close_";
-   char closeF [50];
-   strcat(closeS, nomFIFO);
-   strcpy(closeF, closeS);
-   strcat(closeS, "_ok()");
-   strcat(closeF, "_failed()");
-   strcat(nomFIFOBarra, nomFIFO);
    char unlinkS [50] = "FIFO_unlink_";
    char unlinkF [50];
+   strcat(nomFIFOBarra, nomFIFO);
    strcat(unlinkS, nomFIFO);
    strcpy(unlinkF, unlinkS);
    strcat(unlinkS, "_ok()");
    strcat(unlinkF, "_failed()");
-   int status = close(fifo);
-   if(!status){
-      printf("%s\n",  closeS);
-      status = unlink(nomFIFOBarra);
+   int status = status = unlink(nomFIFOBarra);
    if(status)
       perror(unlinkF);
    else
       printf("%s\n", unlinkS);
-      printf("----------------------------------------------------\n\n");
-   }else{
-      perror(closeF);
-   }
 }
 
