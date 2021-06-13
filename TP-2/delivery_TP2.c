@@ -1,16 +1,11 @@
-#include <stdio.h>
 #include <stdio_ext.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <pthread.h>
-#include <semaphore.h>
-#include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 
 // LIBRERIAS PROPIAS
-#include "MonitoresBuffer.h"
+#include "DeleteCreate.h"
 
 // COLORES
 #define RESET_COLOR  "\x1b[0m"
@@ -21,81 +16,65 @@
 #define MAGENTA_F    "\x1b[45m"
 #define BLANCO_T     "\x1b[37m"
 #define BLANCO_F     "\x1b[47m"
+#define CYAN_T       "\x1b[36m"
+#define CYAN_F       "\x1b[46m"
 
 // DATOS DEL JUEGO
 #define ENCARGADOS 1
 #define COCINEROS 3
 #define DELIVERIES 2
-#define BUFFERCOMANDAS 4
-#define BUFFERPEDIDOS 4
 #define CARTA 5
-#define ALARMA 10
-#define TIEMPOLLAMADA 1
-#define ULTIMOPEDIDO -1
-
-/*
-          HACIENDO
-
-    PASAR TODO A PROCESOS
-*/
+#define ALARMA 7
+#define ULTIMOPEDIDO "-1"
 
 int timeout = 1; // INDICA CUANDO EL JUEGO VA A TERMINAR
 
-/*----------------------------------------------------------------------------*/
-/*---------------------------------ESTRUCTURAS--------------------------------*/
-// ESTRUCTURA DE LA MEMORIA
+// ESTRUCTURA LA COMUNICACION ENCARGADO - DELIVERY
 typedef struct {
-  sem_t * semaforoPedidosPorCobrar;
-  sem_t * semaforoDejarDinero;
-  sem_t * semaforoCobrarDinero;
-  int dato;
-}Memoria;
+  sem_t * semCobrarPedidos;
+  int fifo;
+}comDel;
 
 // ESTRUCTURA DEL TELEFONO
 typedef struct {
   sem_t * semaforoTelefono;
   sem_t * semaforoLlamadas;
-  int pedido;
-  int * puntuacion;
+  int * tubo;
 }Telefono;
 
 // ESTRUCTURA DEL ENCARGADO
 typedef struct {
-  Telefono * telefono;
+  Telefono * comTel;
+  mqd_t enviar;
+  comDel * comDel;
+  char pedidoActual [3];
   int comandaEnMano;
-  int pedidoActual;
-  struct Monitor_t * monitorComandas;
-  Memoria * memoria;
-  int ubiMemoria;
   float precios[CARTA];
+  int puntuacion;
 }Encargado;
 
 // ESTRUCTURA DEL COCINERO
 typedef struct {
-  struct Monitor_t * monitorComandas;
-  struct Monitor_t * monitorPedidos;
+  mqd_t recibir;
+  mqd_t enviar;
   int cantCocineros;
 }Cocinero;
 
 // ESTRUCTURA DEL DELIVERY
 typedef struct {
-  struct Monitor_t * monitorPedidos;
-  int cantDeliveries;
-  int ubiMemoria;
-  Memoria * memoria;
+  comDel * comDel;
+  mqd_t recibir;
+  int cantDelivery;
 }Delivery;
 
 /*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
 // ACTORES
-Telefono * crearTelefono(int *);
-Encargado * crearEncargado(Telefono *, struct Monitor_t *, int);
-Cocinero * crearCocinero(struct Monitor_t *, struct Monitor_t *);
-Delivery * crearDelivery(struct Monitor_t *, int);
-
-// MEMORIA
-int crearMemoria();
-void llenarMemoria(int);
+comDel    * crearComDel();
+Telefono  * crearTelefono();
+Encargado * crearEncargado(Telefono *, mqd_t, comDel *);
+Cocinero  * crearCocinero(mqd_t, mqd_t);
+Delivery  * crearDelivery(mqd_t, comDel *);
 
 /*----------------------------------------------------------------------------*/
 /*-------------------------FUNCIONES DEL JUGADOR------------------------------*/
@@ -109,8 +88,10 @@ void salir(int *);
 /*----------------------------------------------------------------------------*/
 /*---------------------FUNCIONES DE ACTORES DEL JUEGO-------------------------*/
 // FUNCIONES DEL TELEFONO
-void * gestionTelefono( void *);
-void recibirLlamada(Telefono * telefono);
+void gestionTelefono( void *);
+void recibirLlamada(Telefono *);
+void hacerPedido(Telefono *);
+void hacerUltimoPedido(Telefono *);
 void TimeOut();
 
 // FUNCIONES DEL ENCARGADO
@@ -119,26 +100,20 @@ void cargarPedido(Encargado *);
 void cobrarPedido(Encargado *, int *);
 
 // FUNCIONES DEL COCINERO
+void hilosCocineros(Cocinero *);
 void * gestionCocinero(void *);
 void cocinarPedido(Cocinero *, int *);
-void pedidoCocinado(Cocinero *);
-void pedidoListo(Cocinero *, int);
+void pedidoListo(Cocinero *, char *);
 
-//FUNCIONES DEL COCINERO
+// FUNCIONES DEL DELIVERY
+void hilosDelivery(Delivery *);
 void * gestionDelivery(void *);
 void repartirPedido(Delivery *, int *);
-void avisarCobro(Delivery *, int);
-
-
-/*----------------------------------------------------------------------------*/
-/*-------------------FUNCIONES DE LIBREACION DE MEMORIA-----------------------*/
-// BORRADO DE SEMAFOROS Y MEMORIA
-void borrarSemMem(Encargado *, int);
+void avisarCobro(Delivery *, char *);
 
 /*-----------------------------------------------------------------------------*/
 /*----------------------------------MAIN---------------------------------------*/
 int main(){
-  srand(time(NULL));
 
   int terminar = 1;
   char eleccion;
@@ -159,7 +134,7 @@ int main(){
     {
     case '1':
         system("clear");
-        int puntuacion = comenzarJuego();;
+        int puntuacion = comenzarJuego();
         guardarPuntuacion(puntuacion);
         break;
     case '2':
@@ -176,93 +151,6 @@ int main(){
   } while (terminar);
 
   return 0;
-}
-
-void mostrarMenu() {
-  system("clear");
-  printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|-------------"BLANCO_T MAGENTA_F" PIZZERIA "NEGRO_T BLANCO_F"-------------|"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"1. Comenzar juego."NEGRO_T BLANCO_F"         |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"2. Ver puntuacion."NEGRO_T BLANCO_F"         |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"3. Salir."NEGRO_T BLANCO_F"                  |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|************************************|"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|             "BLANCO_T MAGENTA_F"Como jugar"NEGRO_T BLANCO_F"             |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"a: Atender telefono"NEGRO_T BLANCO_F"        |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"s: Cargar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"d: Cobrar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
-  printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
-  printf("Ingrese una opcion: ");
-}
-
-int comenzarJuego(){
-  timeout = 1;
-  int puntuacion = 0; // Guarda la puntuacion del juego
-
-  // Creamos los monitores
-  struct Monitor_t * monitorComandas = CrearMonitor(BUFFERCOMANDAS);
-  struct Monitor_t * monitorPedidos = CrearMonitor(BUFFERPEDIDOS);
-
-  // Creamos la memoria y traemos su ubiacion
-  int memoria =  crearMemoria();
-
-  // Se crean los actores del juego
-  Telefono * telefono = crearTelefono(&puntuacion);
-  Encargado * encargado = crearEncargado(telefono, monitorComandas, memoria);
-  Cocinero * cocinero = crearCocinero(monitorComandas, monitorPedidos);
-  Delivery * delivery = crearDelivery(monitorPedidos, memoria);
-
-  // Se instancian las variables hilos de cada objeto
-  pthread_t hiloTelefono;
-  pthread_t hilosCocineros[COCINEROS];
-  pthread_t hilosDeliveries[DELIVERIES];
-
-  // Se crean los hilos de cada objeto
-  pthread_create(&hiloTelefono, NULL, gestionTelefono, (void *)(telefono));
-  for(int i = 0; i < COCINEROS; i++) {
-    pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(cocinero));
-  }
-  for(int i = 0; i < DELIVERIES; i++) {
-    pthread_create(&hilosDeliveries[i], NULL, gestionDelivery, (void *)(delivery));
-  }
-
-  // Se mapea la memoria del encargado
-  encargado->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, encargado->ubiMemoria, 0);
-
-  // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
-  jugar(encargado);
-
-  // Se desmapea la memoria del encargado
-  if (encargado->memoria != NULL) {
-    int error = munmap((void*)(encargado->memoria), 2 * sizeof(Memoria));
-    if (error)
-      perror("encargado_munmap()");
-  }
-
-  // Se espera que terminen todos los hilos
-  pthread_join(hiloTelefono, NULL);
-  for(int i = 0; i < COCINEROS; i++)
-    pthread_join(hilosCocineros[i], NULL);
-  for(int i = 0; i < DELIVERIES; i++)
-    pthread_join(hilosDeliveries[i], NULL);
-
-  // Se liberan los semaforos
-  borrarSemMem(encargado, memoria);
-
-  // Borramos los monitores
-  BorrarMonitor(monitorComandas);
-  BorrarMonitor(monitorPedidos);
-
-  // Se libera la memoria de los objetos creados
-  free(telefono);
-  free(encargado);
-  free(cocinero);
-  free(delivery);
-
-  return puntuacion;
 }
 
 void jugar(Encargado * encargado){
@@ -290,31 +178,115 @@ void jugar(Encargado * encargado){
   free(terminado);
 }
 
-// Hilo Encargado
+void mostrarMenu() {
+  system("clear");
+  printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|-------------"BLANCO_T MAGENTA_F" PIZZERIA "NEGRO_T BLANCO_F"-------------|"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"1. Comenzar juego."NEGRO_T BLANCO_F"         |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"2. Ver puntuacion."NEGRO_T BLANCO_F"         |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"3. Salir."NEGRO_T BLANCO_F"                  |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|************************************|"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|             "BLANCO_T MAGENTA_F"Como jugar"NEGRO_T BLANCO_F"             |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"a: Atender telefono"NEGRO_T BLANCO_F"        |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"s: Cargar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|         "NEGRO_T BLANCO_F"d: Cobrar pedido"NEGRO_T BLANCO_F"           |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|                                    |"RESET_COLOR"\n");
+  printf(NEGRO_T BLANCO_F"|------------------------------------|"RESET_COLOR"\n");
+  printf("Ingrese una opcion: ");
+}
+
+int comenzarJuego(){
+
+  // Creamos las colas de mensajes para enc-coc y coc-del
+  mqd_t mqdComandasEnc = crearColaMensaje("encargadoCocineros", "enc", O_WRONLY | O_CREAT);
+  mqd_t mqdComandasCoc = crearColaMensaje("encargadoCocineros", "coc", O_RDONLY);
+  mqd_t mqdPedidosCoc  = crearColaMensaje("cocinerosDelivery" , "coc", O_WRONLY | O_CREAT);
+  mqd_t mqdPedidosDel  = crearColaMensaje("cocinerosDelivery" , "del", O_RDONLY);
+
+  // Se crean los actores del juego donde pasamos lo que creamos recien
+  comDel    * comDel    = crearComDel();
+  Telefono  * telefono  = crearTelefono();
+  Encargado * encargado = crearEncargado(telefono, mqdComandasEnc, comDel);
+  Cocinero  * cocinero  = crearCocinero(mqdComandasCoc, mqdPedidosCoc);
+  Delivery  * delivery  = crearDelivery(mqdPedidosDel, comDel);
+
+  // CREAMOS LOS PROCESOS
+  pid_t pid;
+
+  pid = fork();
+  if(pid == 0) {
+    gestionTelefono(telefono); // TELEFONO
+    exit(0);
+  }
+
+  pid = fork();
+  if(pid == 0){
+    hilosCocineros(cocinero); // COCINEROS
+    exit(0);
+  }
+
+  pid = fork();
+  if(pid == 0){
+    hilosDelivery(delivery); // DELIVERY
+    exit(0);
+  }
+
+  // Arranca el ciclo de juego del encargado, donde se detecta las teclas que presiona
+  if(pid > 0){
+    close(encargado->comTel->tubo[1]);
+    encargado->comDel->fifo = open("/tmp/deliveryEncargado",O_RDONLY);
+    if (encargado->comDel->fifo<0)
+      perror("fifo_open_enc()");
+    jugar(encargado);
+    close(encargado->comTel->tubo[0]);
+  }
+
+  // Borramos semaforos de telefono y de la comunicacion entre Encargado y Delivery
+  printf("\n\n-----------------------------------------------------\n");
+  borrarSemaforo(encargado->comTel->semaforoTelefono, "semTelefono",  "enc");
+  borrarSemaforo(encargado->comDel->semCobrarPedidos, "semCobrarPedidos",  "enc");
+
+  // Cerramos las colas de mensajes
+  cerrarColaMensaje(cocinero->recibir, "encargadoCocineros", "coc");
+  borrarColaMensaje(encargado->enviar, "encargadoCocineros", "enc");
+  cerrarColaMensaje(delivery->recibir, "cocinerosDelivery",  "del");
+  borrarColaMensaje(cocinero->enviar , "cocinerosDelivery",  "coc");
+
+  // Cerramos FIFO
+  borrarFIFO("deliveryEncargado");
+  printf("-----------------------------------------------------\n\n");
+
+  // Se libera la memoria de los objetos creados
+  free(telefono);
+  free(encargado);
+  free(cocinero);
+  free(delivery);
+
+  return encargado->puntuacion;
+}
+
+// Proceso Encargado
 void atenderPedido(Encargado * encargado) {
-  // Si tiene una comanda en la mano, no puede atender el telefono
-  if(encargado->comandaEnMano) {
+  if(encargado->comandaEnMano || strcmp(encargado->pedidoActual, ULTIMOPEDIDO) == 0) {
     printf(NEGRO_T BLANCO_F"\t\tdejar comanda antes de atender otro pedido"RESET_COLOR"\n");
     return;
   }
-  
+
   // Verifica si hay alguna llamada entrante
-  int error = sem_trywait(encargado->telefono->semaforoLlamadas);
-  if(!error) {
-    printf("\t\ttelefono atendido\n");
-    usleep(rand()% 100001 + 250000); // Tiempo que tarda en tomar el pedido
-    encargado->pedidoActual = encargado->telefono->pedido; // Comanda
-    encargado->comandaEnMano = 1; // Flag, encargado debe cargar el pedido antes de atender otro
+  sem_post(encargado->comTel->semaforoTelefono);
+  encargado->comandaEnMano++;
+  read(encargado->comTel->tubo[0], encargado->pedidoActual, 3);
 
-    if(encargado->pedidoActual != -1)
-      printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %d lista para cargar"RESET_COLOR"\n", 
+  if(strcmp(encargado->pedidoActual, ULTIMOPEDIDO)){
+    printf(BLANCO_T MAGENTA_F"\t\tcomanda de pedido %s lista para cargar"RESET_COLOR"\n", 
             encargado->pedidoActual);
-    else
-      printf(BLANCO_T MAGENTA_F"\t\tavisar a los cocineros que cierren la cocina"RESET_COLOR"\n");
-
-    // Cuelga el telefono
-    sem_post(encargado->telefono->semaforoTelefono);
+    encargado->puntuacion++;
   }
+  else
+    printf(BLANCO_T MAGENTA_F"\t\tavisar a los cocineros que cierren la cocina"RESET_COLOR"\n");
 }
 
 void cargarPedido (Encargado * encargado) {
@@ -324,50 +296,45 @@ void cargarPedido (Encargado * encargado) {
     return;
   }
 
-  // Carga el pedido
-  int error = GuardarDato(encargado->monitorComandas, encargado->pedidoActual);
-  if(error)
-    perror("GuardarDato()");
+  // Deja comanda a los cocineros
+  if(strcmp(encargado->pedidoActual, ULTIMOPEDIDO)) {
+    int enviado = mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
+    if (enviado == -1)
+      perror("ENCARGADO mq_send");
+  }
   else {
-    if(encargado->pedidoActual == ULTIMOPEDIDO) {
-      for (int i = 0; i < COCINEROS-1; i++){
-        // Si el pedido actual es el ultimo, avisa a cada cocinero que cierren la cocina
-        error =  GuardarDato(encargado->monitorComandas, encargado->pedidoActual);
-        if(error)
-          perror("GuardarDato()");
-      }
+    for (int i = 0; i < COCINEROS; i++){
+      // Si el pedido actual es el ultimo, avisa a cada cocinero que cierren la cocina
+      int enviado = mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
+      if (enviado == -1)
+        perror("ENCARGADO mq_send");
     }
   }
   encargado->comandaEnMano = 0;
 }
 
 void cobrarPedido(Encargado * encargado, int * terminado) {
-  // Se fija si hay algun delivery esperando para que le cobre
-  int cobrosPendientes = 0;
-  int error = sem_getvalue(encargado->memoria->semaforoPedidosPorCobrar, &cobrosPendientes);
-  if(!error) {
-    if(cobrosPendientes > 0){
-      sem_post(encargado->memoria->semaforoDejarDinero);
-      sem_wait(encargado->memoria->semaforoCobrarDinero);
-      int pedido = encargado->memoria->dato;
+  int cobrar = 0;
+  sem_getvalue(encargado->comDel->semCobrarPedidos, &cobrar);
+  if(cobrar){
+    char pedido[3];
+    sem_trywait(encargado->comDel->semCobrarPedidos);
+    read(encargado->comDel->fifo,pedido,3);
 
-      // Si el delivery le avisa que ya termino, cierra el local
-      if( pedido != ULTIMOPEDIDO)
-        printf("\t\t$%.0f guardados de pedido %d\n", encargado->precios[pedido], pedido);
-      else {
-        printf("\t\tCerrando local\n");
-        * terminado = -1;
-      }
-      sem_trywait(encargado->memoria->semaforoPedidosPorCobrar);
+    // Si el delivery le avisa que ya termino, cierra el local
+    if(strcmp(pedido, ULTIMOPEDIDO))
+      printf(NEGRO_T CYAN_F"\t\t$%.0f guardados de pedido %s"RESET_COLOR"\n", encargado->precios[atoi(pedido)], pedido);
+    else {
+      printf("\t\tCerrando local\n");
+      * terminado = -1;
     }
-  }
-  else{
-    perror("encargado_sem_getvalue()");
+  }else{
+    printf(NEGRO_T BLANCO_F"\t\tNo hay pedidos por cobrar"RESET_COLOR"\n");
   }
 }
 
-// Hilo telefono
-void * gestionTelefono(void * tmp){
+// Proceso Telefono
+void gestionTelefono(void * tmp){
   Telefono * telefono = (Telefono *) tmp;
 
   // Seteamos la alarma del juego e iniciamos el contador
@@ -375,120 +342,143 @@ void * gestionTelefono(void * tmp){
   alarm(ALARMA);
 
   // Ciclo de recibir llamadas, finaliza cuando suena la alarma
-  while (timeout)
+  while (timeout){
+    usleep(rand() % 750001 + 250000);
     recibirLlamada(telefono);
+  }
 
   // Envia el último pedido
-  sem_wait(telefono->semaforoTelefono);
-  telefono->pedido= ULTIMOPEDIDO;
-  printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
-  sem_post(telefono->semaforoLlamadas);
+  hacerUltimoPedido(telefono);
 
-  // Termina el hilo
-  pthread_exit(NULL);
+  // Cerramos el pipe
+  close(telefono->tubo[0]);
+  close(telefono->tubo[1]);
 }
 
 void recibirLlamada(Telefono * telefono) {
-  // El telefono comienza a recibir llamadas mientras esta colgado
-  sem_wait(telefono->semaforoTelefono);
-  usleep(rand()% 750001 + 250000);
-  telefono->pedido = rand() % CARTA;
+
+  // Entra pedido
   printf(BLANCO_T ROJO_F"\ttelefono sonando"RESET_COLOR"\n");
+  hacerPedido(telefono);
+
+  char temp [3];
+  int error = 0;
+  // El cliente esta 1 segundo esperando ser atendido
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec += 1;
+  error = sem_timedwait(telefono->semaforoTelefono, &ts);
+  if(error) {
+    printf("\tSe perdio la llamada\n");
+    read(telefono->tubo[0], temp, 3);
+  }
+}
+
+void hacerPedido(Telefono * telefono) {
+  char numeroPedido [2];
+
+  snprintf(numeroPedido, 2, "%d", rand() % CARTA);
+  usleep(rand()% 50001 + 50000); // Tiempo que tarda en pedir
+  write(telefono->tubo[1], numeroPedido, 2);
+}
+
+void hacerUltimoPedido(Telefono * telefono) {
 
   // El telefono comienza a sonar
-  sem_post(telefono->semaforoLlamadas);
-  sleep(TIEMPOLLAMADA); // Tiempo que el cliente espera antes de cortar
-  int telefonoSonando = 0;
+  printf(BLANCO_T ROJO_F"\tDueño llamando para cerrar local"RESET_COLOR"\n");
+  // sem_post(telefono->semaforoLlamadas);
+  sem_wait(telefono->semaforoTelefono);
 
-  // Si el telefono no es atendido, se pierde la llamada
-  sem_getvalue(telefono->semaforoLlamadas, &telefonoSonando);
-  if(telefonoSonando > 0) {
-    int error = sem_trywait(telefono->semaforoLlamadas);
-    if(!error) {
-      printf("\tSe perdio la llamada\n");
-      sem_post(telefono->semaforoTelefono);
-    }
-  }
-  else
-    *telefono->puntuacion = *telefono->puntuacion+1; // Si se atiende, suma un punto
+  // Envia el ultimo pedido
+  write(telefono->tubo[1], ULTIMOPEDIDO, 3);
 }
 
 void TimeOut() {
   timeout = 0;
 }
 
-// Hilo Cocinero
-void * gestionCocinero(void * tmp) {
+// Proceso Cocinero con sus 3 hilos
+void hilosCocineros(Cocinero * cocinero) {
+  pthread_t hilosCocineros[COCINEROS];
+  for(int i = 0; i < COCINEROS; i++) 
+    pthread_create(&hilosCocineros[i], NULL, gestionCocinero, (void *)(cocinero));
+  for(int i = 0; i < COCINEROS; i++)
+    pthread_join(hilosCocineros[i], NULL);
+}
 
-  Cocinero *cocinero = (Cocinero *) tmp;
+void * gestionCocinero(void * tmp) {
+  Cocinero *cocinero = (Cocinero *) (tmp);
   int * terminado = (int *)(calloc(1, sizeof(int)));
 
   // Ciclo de cocinar pedidos, finaliza cuando el encargado avisa
   while(*terminado != -1)
     cocinarPedido(cocinero, terminado);
-
+    
   free(terminado);
-
-  // Termina el hilo
   pthread_exit(NULL);
 }
 
 void cocinarPedido(Cocinero * cocinero, int * terminado) {
-
   // Toma una comanda para empezar a cocinar
-  int pedidoActual = 0;
-  int error = LeerDato(cocinero->monitorComandas, &pedidoActual);
-  if(error)
-    perror("LeerDato()");
-  else {
-    // Comienza a cocinar
-    if( pedidoActual != ULTIMOPEDIDO) {
+  char pedido[5];
+  int recibido = mq_receive(cocinero->recibir, pedido, 5, NULL);
+  if (recibido == -1)
+    perror("COCINERO mq_receive");
+  else{
+    if(strcmp(pedido, ULTIMOPEDIDO)) {
       usleep(rand()% 500001 + 1000000); // Tiempo que se demora en cocinar
-      pedidoListo(cocinero, pedidoActual);
+      pedidoListo(cocinero, pedido);
     }
-    // Recibe el aviso para terminar
-    else {
+    else{
       cocinero->cantCocineros--;
       * terminado = -1;
       // El ultimo cocinero es el encargado de avisar a los deliveries que ya cerró la cocina
       if(cocinero->cantCocineros == 0) {
-        for(int i = 0; i < DELIVERIES; i++)
-          pedidoListo(cocinero, ULTIMOPEDIDO);
+        pedidoListo(cocinero, ULTIMOPEDIDO);
       }
     }
   }
 }
 
-void pedidoListo(Cocinero * cocinero, int pedidoListo){
-  
+void pedidoListo(Cocinero * cocinero, char * pedido) {
   // Deja el pedido en el mostrador
-  int error = GuardarDato(cocinero->monitorPedidos, pedidoListo);
-  if(error)
-    perror("GuardarDato()");
+  if(strcmp(pedido, ULTIMOPEDIDO)) {
+    int enviado = mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
+    if (enviado == -1)
+      perror("COCINERO mq_send");
+  }
+  else {
+    for (int i = 0; i < DELIVERIES; i++){
+      // Si el pedido actual es el ultimo, avisa a cada delivery que se vayan
+      int enviado = mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
+      if (enviado == -1)
+        perror("COCINERO mq_send");
+    }
+  }
 }
 
-// Hilo Delivery
-void * gestionDelivery(void * tmp){
+// Proceso Delivery con sus  2 hilos
+void hilosDelivery(Delivery * delivery) {
+  pthread_t hilosDelivery[DELIVERIES];
+  for(int i = 0; i < DELIVERIES; i++) 
+    pthread_create(&hilosDelivery[i], NULL, gestionDelivery, (void *)(delivery));
+  for(int i = 0; i < DELIVERIES; i++)
+    pthread_join(hilosDelivery[i], NULL);
+}
 
+void * gestionDelivery(void * tmp) {
   Delivery * delivery = (Delivery *)(tmp);
   int * terminado = (int *)(calloc(1, sizeof(int)));
 
-  // Se mapea la memoria compartida una sola vez
-  if(delivery->memoria == NULL)
-    delivery->memoria = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, delivery->ubiMemoria, 0);
+  // Abrimos la fifo como escritura una vez por cada hilo delivery
+  delivery->comDel->fifo = open("/tmp/deliveryEncargado",O_WRONLY);
+  if (delivery->comDel->fifo < 0) {
+    perror("DELIVERY fifo open");
+  }
 
   // Ciclo de repartir pedidos
   while(*terminado != -1)
     repartirPedido(delivery, terminado);
-
-  // Si es el ultimo delivery, se desmapea la memoria
-  if(delivery->cantDeliveries == 0){
-      if (delivery->memoria != NULL) {
-        int error = munmap((void*)(delivery->memoria), 2 * sizeof(Memoria));
-        if (error)
-          perror("delivery_munmap()");
-      }
-  }
 
   free(terminado);
 
@@ -497,214 +487,94 @@ void * gestionDelivery(void * tmp){
 }
 
 void repartirPedido(Delivery * delivery, int * terminado) {
-  int error = 0;
-  int pedidoRepartir = 0;
-  error = LeerDato(delivery->monitorPedidos, &pedidoRepartir);
-  if(error)
-    perror("LeerDato()");
-  else {
-    // Sale a repartir el pedido
-    if( pedidoRepartir != ULTIMOPEDIDO) {
-      usleep(rand()% 500001 + 500000);
-      avisarCobro(delivery, pedidoRepartir);
+  // Toma una pedido listo para repartir al cliente
+  char pedido[5];
+  int recibido = mq_receive(delivery->recibir, pedido, 5, NULL);
+  if (recibido == -1)
+    perror("DELIVERY mq_receive");
+  else{
+    if(strcmp(pedido, ULTIMOPEDIDO)) {
+      usleep(rand()% 500001 + 500000);  // Tiempo que se demora en repartir pedido
+      avisarCobro(delivery, pedido);
     }
-    // Recibe mensaje de un cocinero para que se retire
-    else {
-      delivery->cantDeliveries--;
+     else {
+      delivery->cantDelivery--;
       * terminado = -1;
       // Si es el ultimo delivery que termina, le avisa al encargado
-      if(delivery->cantDeliveries == 0)
+      if(delivery->cantDelivery == 0)
         avisarCobro(delivery, ULTIMOPEDIDO);
     }
   }
 }
 
-void avisarCobro(Delivery * delivery, int pedidoCobrar){
-
-  // Avisa al encargado que esta listo para dejar dinero
-  sem_post(delivery->memoria->semaforoPedidosPorCobrar);
+void avisarCobro(Delivery * delivery, char * pedidoCobrar){
 
   // Deja el dinero
-  if(pedidoCobrar != ULTIMOPEDIDO) 
-    printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %d listo para cobrar"RESET_COLOR"\n", pedidoCobrar);  
+  if(strcmp(pedidoCobrar, ULTIMOPEDIDO))
+    printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %s listo para cobrar"RESET_COLOR"\n", pedidoCobrar);
   // Avisa que se va
-  else 
+  else {
     printf(BLANCO_T VERDE_F"\t\t\t\tPresione d para cerrar el local"RESET_COLOR"\n");
-  
-  sem_wait(delivery->memoria->semaforoDejarDinero);
-  delivery->memoria->dato = pedidoCobrar;
-  sem_post(delivery->memoria->semaforoCobrarDinero);
+  }
+
+  write(delivery->comDel->fifo, pedidoCobrar, 3);
+
+  // Permite que el encargado pueda comenzar a cobrar
+  sem_post(delivery->comDel->semCobrarPedidos);
 }
 
 /*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE INICIALIZACION--------------------------*/
+// Creacion de comunicacion entre encargado y delivery
+comDel * crearComDel() {
+  comDel * com = (comDel *)(calloc(1, sizeof(comDel)));
+  com->semCobrarPedidos = crearSemaforo("semCobrarPedidos", "comDel", 0);
+  com->fifo = crearFIFO("deliveryEncargado");
+  return com;
+}
+
 // Creacion de Telefono
-Telefono * crearTelefono(int * puntuacion) {
+Telefono * crearTelefono() {
   Telefono * telefono = (Telefono *)(calloc(1, sizeof(Telefono)));
-  telefono->semaforoTelefono = (sem_t *)(calloc(1, sizeof(sem_t)));
-  telefono->semaforoTelefono = sem_open("/semTelefono", O_CREAT, O_RDWR, 1);
-  telefono->semaforoLlamadas = (sem_t *)(calloc(1, sizeof(sem_t)));
-  telefono->semaforoLlamadas = sem_open("/semLlamadas", O_CREAT, O_RDWR, 0);
-  telefono->puntuacion = puntuacion;
+  telefono->semaforoTelefono = crearSemaforo("semTelefono", "tel", 0);
+  printf("-----------------------------------------------------\n\n");
+  telefono->tubo = (int *)(calloc(2, sizeof(int)));
+  pipe(telefono->tubo);
   return telefono;
 }
 
 // Creacion de Encargado
-Encargado * crearEncargado(Telefono *telefono, struct Monitor_t * monitorComandas, int memoria){
+Encargado * crearEncargado(Telefono * tel, mqd_t cola, comDel * com) {
   Encargado * encargado = (Encargado *)(calloc(1, sizeof(Encargado)));
-  encargado->telefono = telefono;
-  encargado->monitorComandas = monitorComandas;
-  encargado->ubiMemoria = memoria;
-  encargado->memoria = NULL;
+  encargado->comTel = tel;
+  encargado->enviar = cola;
+  encargado->comDel = com;
   for(int i = 0; i < CARTA; i++)
     encargado->precios[i] = 100 * (i+1);
   return encargado;
 }
 
 // Creacion de Cocinero
-Cocinero * crearCocinero(struct Monitor_t * monitorComandas, struct Monitor_t * monitorPedidos) {
+Cocinero * crearCocinero(mqd_t recibir, mqd_t enviar) {
   Cocinero * cocinero = (Cocinero *)(calloc(1, sizeof(Cocinero)));
-  cocinero->monitorComandas = monitorComandas;
-  cocinero->monitorPedidos = monitorPedidos;
+  cocinero->recibir = recibir;
+  cocinero->enviar  = enviar;
   cocinero->cantCocineros = COCINEROS;
   return cocinero;
 }
 
 // Creacion de Delivery
-Delivery * crearDelivery(struct Monitor_t * monitorPedidos, int memoria) {
+Delivery  * crearDelivery(mqd_t recibir, comDel * com) {
   Delivery * delivery = (Delivery *)(calloc(1, sizeof(Delivery)));
-  delivery->monitorPedidos = monitorPedidos;
-  delivery->cantDeliveries = DELIVERIES;
-  delivery->ubiMemoria = memoria;
-  delivery->memoria = NULL;
+  delivery->recibir = recibir;
+  delivery->comDel = com;
+  delivery->cantDelivery = DELIVERIES;
   return delivery;
-}
-
-// Creacion de Memoria
-int crearMemoria() {
-  int error = 0;
-
-  // Creo la memoria
-  int ubiMemoria = shm_open("/memCompartida", O_CREAT | O_RDWR, 0660);
-  if (ubiMemoria < 0) {
-    perror("shm_open()");
-    error = -1;
-  }
-  if (!error) {
-    error = ftruncate(ubiMemoria, sizeof(Memoria));
-    if (error)
-      perror("ftruncate()");
-  }
-
-  // Lleno la memoria
-  llenarMemoria(ubiMemoria);
-
-  // Devuelvo la ubicacion de la memoria.
-  return ubiMemoria;
-}
-
-void llenarMemoria(int ubicacion) {
-  // Mapeo una referencia a la memoria e inicializo la estructura que lleva adentro.
-  Memoria * temp = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, ubicacion, 0);
-
-  temp->semaforoPedidosPorCobrar = (sem_t *)(calloc(1, sizeof(sem_t)));
-  temp->semaforoPedidosPorCobrar = sem_open("/semPedidosPorCobrar", O_CREAT, O_RDWR, 0);
-
-  temp->semaforoDejarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
-  temp->semaforoDejarDinero = sem_open("/semDejarDinero", O_CREAT, O_RDWR, 0);
-
-  temp->semaforoCobrarDinero = (sem_t *)(calloc(1, sizeof(sem_t)));
-  temp->semaforoCobrarDinero = sem_open("/semCobrarDinero", O_CREAT, O_RDWR, 0);
-
-  temp->dato = 0;
-
-  // Desmapeo la referencia.
-  if (temp != NULL) {
-    int error = munmap((void*)(temp), 2 * sizeof(Memoria));
-    if (error) {
-      perror("creacion_memoria_munmap()");
-    }
-  }
-}
-
-/*----------------------------------------------------------------------------*/
-/*--------------------FUNCIONES DE LIBERACION DE MEMORIA----------------------*/
-
-// Borrado de semaforos y memoria
-void borrarSemMem(Encargado * enc, int ubiMemoria) {
-  Memoria * temp = mmap(NULL, sizeof(Memoria), PROT_READ | PROT_WRITE, MAP_SHARED, ubiMemoria, 0);
-  int status=0;
-  // Semaforo Telefono
-  status = sem_close(enc->telefono->semaforoTelefono);
-  if (!status) {
-    status = sem_unlink("/semTelefono");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo Llamadas
-  status = sem_close(enc->telefono->semaforoLlamadas);
-  if (!status) {
-    status = sem_unlink("/semLlamadas");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo PedidosPorCobrar
-  status = sem_close(temp->semaforoPedidosPorCobrar);
-  if (!status) {
-    status = sem_unlink("/semPedidosPorCobrar");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo DejarDinero
-  status = sem_close(temp->semaforoDejarDinero);
-  if (!status) {
-    status = sem_unlink("/semDejarDinero");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Semaforo CobrarDinero
-  status = sem_close(temp->semaforoCobrarDinero);
-  if (!status) {
-    status = sem_unlink("/semCobrarDinero");
-    if (status)
-      perror("sem_unlink()");
-  }
-  else
-    perror("sem_close()");
-
-  // Desmapeo la memoria
-  if (temp != NULL) {
-    int error = munmap((void*)(temp), 2 * sizeof(Memoria));
-    if (error) {
-      perror("temp_munmap()");
-    }
-  }
-
-  // Memoria Compartida
-  if (ubiMemoria > 0) {
-    status = shm_unlink("/memCompartida");
-    if (status) {
-      perror("unlink()");
-    }
-  }
 }
 
 /*----------------------------------------------------------------------------*/
 /*-----------------------FUNCIONES DE LA PUNTUACION---------------------------*/
-
-// Guarda la puntuacion al finalizar el juego
+// Guarda la puntuacion
 void guardarPuntuacion(int score) {
   FILE * archivoPuntuacion;
   archivoPuntuacion = fopen("./puntuacion.txt", "a");
@@ -753,6 +623,9 @@ void verPuntuacion(){
     perror("fclose()");
 }
 
+
+/*----------------------------------------------------------------------------*/
+/*---------------------------FUNCIONES CIERRE---------------------------------*/
 // Cierra el juego
 void salir(int * terminar){
   printf(MAGENTA_F BLANCO_T"\t\t\tGracias por jugar!!!"RESET_COLOR"\n");
