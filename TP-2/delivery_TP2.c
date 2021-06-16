@@ -242,12 +242,6 @@ int comenzarJuego(){
     encargado->comDel->fifo = open("/tmp/deliveryEncargado",O_RDONLY);
     if (encargado->comDel->fifo<0)
       perror("fifo_open_enc()");
-    // int valorSemaforos = 0;
-    // sem_getvalue(encargado->comTel->semaforoLlamadas, &valorSemaforos);
-    // sem_getvalue(encargado->comTel->semaforoTelefono, &valorSemaforos);
-    // printf("Sem_Tel: %d", valorSemaforos);
-    // sem_getvalue(encargado->comDel->semCobrarPedidos, &valorSemaforos);
-    // printf("Sem_Del: %d", valorSemaforos);
     jugar(encargado);
     close(encargado->comTel->tubo[0]);
   }
@@ -321,8 +315,6 @@ void cargarPedido (Encargado * encargado) {
       int enviado = mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
       if (enviado == -1)
         perror("ENCARGADO mq_send");
-      // else
-        // printf("ULTIMO_PEDIDO_ENCARGADO_ENVIADO\n");
     }
   }
   encargado->comandaEnMano = 0;
@@ -406,7 +398,6 @@ void hacerUltimoPedido(Telefono * telefono) {
 
   // Envia el ultimo pedido
   write(telefono->tubo[1], ULTIMOPEDIDO, 3);
-  // printf("ULTIMO_PEDIDO_TELEFONO_ENVIADO\n");
 }
 
 void TimeOut() {
@@ -469,8 +460,6 @@ void pedidoListo(Cocinero * cocinero, char * pedido) {
       int enviado = mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
       if (enviado == -1)
         perror("COCINERO mq_send");
-      // else
-      //   printf("ULTIMO_PEDIDO_COCINERO_ENVIADO\n");
     }
   }
 }
