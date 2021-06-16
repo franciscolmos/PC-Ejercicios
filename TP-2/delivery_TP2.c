@@ -38,7 +38,7 @@ typedef struct {
 // ESTRUCTURA DEL TELEFONO
 typedef struct {
   sem_t * semaforoTelefono;
-  sem_t * semaforoLlamadas;
+  // sem_t * semaforoLlamadas;
   int * tubo;
 }Telefono;
 
@@ -199,6 +199,8 @@ void mostrarMenu() {
 }
 
 int comenzarJuego(){
+  fflush(NULL);
+  srand(time(NULL));
 
   // Creamos las colas de mensajes para enc-coc y coc-del
   mqd_t mqdComandasEnc = crearColaMensaje("encargadoCocineros", "enc", O_WRONLY | O_CREAT);
@@ -240,6 +242,12 @@ int comenzarJuego(){
     encargado->comDel->fifo = open("/tmp/deliveryEncargado",O_RDONLY);
     if (encargado->comDel->fifo<0)
       perror("fifo_open_enc()");
+    // int valorSemaforos = 0;
+    // sem_getvalue(encargado->comTel->semaforoLlamadas, &valorSemaforos);
+    // sem_getvalue(encargado->comTel->semaforoTelefono, &valorSemaforos);
+    // printf("Sem_Tel: %d", valorSemaforos);
+    // sem_getvalue(encargado->comDel->semCobrarPedidos, &valorSemaforos);
+    // printf("Sem_Del: %d", valorSemaforos);
     jugar(encargado);
     close(encargado->comTel->tubo[0]);
   }
@@ -270,10 +278,15 @@ int comenzarJuego(){
 
 // Proceso Encargado
 void atenderPedido(Encargado * encargado) {
-  if(encargado->comandaEnMano || strcmp(encargado->pedidoActual, ULTIMOPEDIDO) == 0) {
+  if(encargado->comandaEnMano) {
     printf(NEGRO_T BLANCO_F"\t\tdejar comanda antes de atender otro pedido"RESET_COLOR"\n");
     return;
   }
+  if(strcmp(encargado->pedidoActual, ULTIMOPEDIDO) == 0) {
+    printf(NEGRO_T BLANCO_F"\t\tel telefono fue desconectado"RESET_COLOR"\n");
+    return;
+  }
+  
 
   // Verifica si hay alguna llamada entrante
   sem_post(encargado->comTel->semaforoTelefono);
@@ -308,6 +321,8 @@ void cargarPedido (Encargado * encargado) {
       int enviado = mq_send(encargado->enviar,encargado->pedidoActual,strlen(encargado->pedidoActual)+1,0);
       if (enviado == -1)
         perror("ENCARGADO mq_send");
+      // else
+        // printf("ULTIMO_PEDIDO_ENCARGADO_ENVIADO\n");
     }
   }
   encargado->comandaEnMano = 0;
@@ -391,6 +406,7 @@ void hacerUltimoPedido(Telefono * telefono) {
 
   // Envia el ultimo pedido
   write(telefono->tubo[1], ULTIMOPEDIDO, 3);
+  // printf("ULTIMO_PEDIDO_TELEFONO_ENVIADO\n");
 }
 
 void TimeOut() {
@@ -453,6 +469,8 @@ void pedidoListo(Cocinero * cocinero, char * pedido) {
       int enviado = mq_send(cocinero->enviar,pedido,strlen(pedido)+1,0);
       if (enviado == -1)
         perror("COCINERO mq_send");
+      // else
+      //   printf("ULTIMO_PEDIDO_COCINERO_ENVIADO\n");
     }
   }
 }
@@ -514,7 +532,7 @@ void avisarCobro(Delivery * delivery, char * pedidoCobrar){
     printf(NEGRO_T AMARILLO_F"\t\t\t\tPedido %s listo para cobrar"RESET_COLOR"\n", pedidoCobrar);
   // Avisa que se va
   else {
-    printf(BLANCO_T VERDE_F"\t\t\t\tPresione d para cerrar el local"RESET_COLOR"\n");
+    printf(BLANCO_T VERDE_F"\t\t\t\tPresione d hasta cerrar el local"RESET_COLOR"\n");
   }
 
   write(delivery->comDel->fifo, pedidoCobrar, 3);

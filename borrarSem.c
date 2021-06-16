@@ -17,6 +17,14 @@ int main () {
       error -= 1;
     }
 
+    status = sem_unlink("/semLlamadas");
+    if (!status)
+      printf("Semaforo [semLlamdadas] borrado!\n");
+    else {
+      perror("semLlamadas_unlink()");
+      error -= 1;
+    }
+
     status = sem_unlink("/semCobrarPedidos");
     if (!status)
       printf("Semaforo [semCobrarPedidos] borrado!\n");
